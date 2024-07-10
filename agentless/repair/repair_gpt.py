@@ -419,23 +419,23 @@ def repair(args):
                             ),
                         },
                     }
-                # config = create_chatgpt_config(
-                #     message=message,
-                #     max_tokens=1024,
-                #     temperature=0,  # greedy first
-                #     batch_size=1,
-                #     model=args.model,  # use gpt-4o for now.
-                # )
-                config = create_codegeex_config(
+                config = create_chatgpt_config(
                     message=message,
                     max_tokens=1024,
-                    temperature=0,
+                    temperature=0,  # greedy first
+                    batch_size=1,
+                    model=args.model,  # use gpt-4o for now.
                 )
+                # config = create_codegeex_config(
+                #     message=message,
+                #     max_tokens=1024,
+                #     temperature=0,
+                # )
                 
-                greedy_response = request_codegeex_engine(config)
-                # greedy_response = request_chatgpt_engine(config)
+                # greedy_response = request_codegeex_engine(config)
+                greedy_response = request_chatgpt_engine(config)
                 return {
-                    "response": greedy_response,
+                    "response": greedy_response.choices[0].message.content,
                     "usage": {
                         "completion_tokens": greedy_response.usage.completion_tokens,
                         "prompt_tokens": greedy_response.usage.prompt_tokens,
@@ -458,33 +458,33 @@ def repair(args):
                 if sample_responses is not None:
                     # Directly return earlier samples
                     return {
-                        "response": sample_responses#  sample_responses.choices[count - 1].message.content,
-                        # "usage": {
-                        #     "completion_tokens": 0,
-                        #     "prompt_tokens": 0,
-                        # },
+                        "response": sample_responses.choices[count - 1].message.content,
+                        "usage": {
+                            "completion_tokens": 0,
+                            "prompt_tokens": 0,
+                        },
                     }
                 assert count == 1
-                # config = create_chatgpt_config(
-                #     message=message,
-                #     max_tokens=1024,
-                #     temperature=0.8,
-                #     batch_size=args.max_samples - 1,  # minus the 1 greedy sample
-                #     model=args.model,  # use gpt-4o for now.
-                # )
-                config = create_codegeex_config(
+                config = create_chatgpt_config(
                     message=message,
                     max_tokens=1024,
                     temperature=0.8,
+                    batch_size=args.max_samples - 1,  # minus the 1 greedy sample
+                    model=args.model,  # use gpt-4o for now.
                 )
-                sample_responses = request_codegeex_engine(config)
-                # sample_responses = request_chatgpt_engine(config)
+                # config = create_codegeex_config(
+                #     message=message,
+                #     max_tokens=1024,
+                #     temperature=0.8,
+                # )
+                # sample_responses = request_codegeex_engine(config)
+                sample_responses = request_chatgpt_engine(config)
                 return {
-                    "response": sample_responses # sample_responses.choices[count - 1].message.content,
-                    # "usage": {
-                    #     "completion_tokens": sample_responses.usage.completion_tokens,
-                    #     "prompt_tokens": sample_responses.usage.prompt_tokens,
-                    # },
+                    "response": sample_responses.choices[count - 1].message.content,
+                    "usage": {
+                        "completion_tokens": sample_responses.usage.completion_tokens,
+                        "prompt_tokens": sample_responses.usage.prompt_tokens,
+                    },
                 }
 
         count = 0

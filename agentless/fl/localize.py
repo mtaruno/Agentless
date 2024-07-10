@@ -6,7 +6,15 @@ import os
 from datasets import load_dataset
 from tqdm import tqdm
 
-from agentless.fl.FL import LLMFL
+
+# for using CodegeeX 4
+# from agentless.fl.FL import LLMFL
+
+# for using GPT 
+from agentless.fl.FL_gpt import LLMFL
+
+
+
 from agentless.util.preprocess_data import (
     filter_none_python,
     filter_out_test_files,

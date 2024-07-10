@@ -258,24 +258,24 @@ Return just the locations.
             }
             return [], {"raw_output_loc": ""}, traj
 
-        # config = create_chatgpt_config(
-        #     message=message,
-        #     max_tokens=self.max_tokens,
-        #     temperature=0,
-        #     batch_size=1,
-        #     model="gpt-4o-2024-05-13",  # use gpt-4o for now.
-        # )
-
-
-        # ret = request_chatgpt_engine(config)
-
-        config = create_codegeex_config(
-        message=message,
-        max_tokens=self.max_tokens,
-        temperature=0,
+        config = create_chatgpt_config(
+            message=message,
+            max_tokens=self.max_tokens,
+            temperature=0,
+            batch_size=1,
+            model="gpt-4o-2024-05-13",  # use gpt-4o for now.
         )
 
-        ret = request_codegeex_engine(config)
+
+        ret = request_chatgpt_engine(config)
+
+        # config = create_codegeex_config(
+        # message=message,
+        # max_tokens=self.max_tokens,
+        # temperature=0,
+        # )
+
+        # ret = request_codegeex_engine(config)
         raw_output = ret.choices[0].message.content
         traj = {
             "prompt": message,
@@ -366,22 +366,22 @@ Return just the locations.
             }
             return [], {"raw_output_loc": ""}, traj
 
-        # config = create_chatgpt_config(
-        #     message=message,
-        #     max_tokens=self.max_tokens,
-        #     temperature=0,
-        #     batch_size=1,
-        #     model="gpt-4o-2024-05-13",  # use gpt-4o for now.
-        # )
-
-        config = create_codegeex_config(
+        config = create_chatgpt_config(
             message=message,
             max_tokens=self.max_tokens,
             temperature=0,
+            batch_size=1,
+            model="gpt-4o-2024-05-13",  # use gpt-4o for now.
         )
+
+        # config = create_codegeex_config(
+        #     message=message,
+        #     max_tokens=self.max_tokens,
+        #     temperature=0,
+        # )
         
-        # ret = request_chatgpt_engine(config)
-        ret = request_codegeex_engine(config)
+        ret = request_chatgpt_engine(config)
+        # ret = request_codegeex_engine(config)
 
         raw_output = ret.choices[0].message.content
         traj = {
@@ -403,11 +403,11 @@ Return just the locations.
         return model_found_locs_separated, {"raw_output_loc": raw_output}, traj
 
     def localize_function_from_compressed_files(self, file_names, mock=False):
-        # from agentless.util.api_requests import (
-        #     create_chatgpt_config,
-        #     num_tokens_from_messages,
-        #     request_chatgpt_engine,
-        # )
+        from agentless.util.api_requests import (
+            create_chatgpt_config,
+            num_tokens_from_messages,
+            request_chatgpt_engine,
+        )
 
         from agentless.util.api_requests import (
             create_codegeex_config,
@@ -445,23 +445,23 @@ Return just the locations.
             }
             return [], {"raw_output_loc": ""}, traj
 
-        # config = create_chatgpt_config(
-        #     message=message,
-        #     max_tokens=self.max_tokens,
-        #     temperature=0,
-        #     batch_size=1,
-        #     model="gpt-4o-2024-05-13",  # use gpt-4o for now.
-        # )
-        # ret = request_chatgpt_engine(config)
-        # raw_output = ret.choices[0].message.content
-
-        config = create_codegeex_config(
+        config = create_chatgpt_config(
             message=message,
             max_tokens=self.max_tokens,
             temperature=0,
+            batch_size=1,
+            model="gpt-4o-2024-05-13",  # use gpt-4o for now.
         )
-        ret = request_codegeex_engine(config)
+        ret = request_chatgpt_engine(config)
         raw_output = ret.choices[0].message.content
+
+        # config = create_codegeex_config(
+        #     message=message,
+        #     max_tokens=self.max_tokens,
+        #     temperature=0,
+        # )
+        # ret = request_codegeex_engine(config)
+        # raw_output = ret.choices[0].message.content
         traj = {
             "prompt": message,
             "response": raw_output,
@@ -536,22 +536,22 @@ Return just the locations.
                 },
             }
             return [], {"raw_output_loc": ""}, traj
-        # config = create_chatgpt_config(
-        #     message=message,
-        #     max_tokens=self.max_tokens,
-        #     temperature=temperature,
-        #     batch_size=num_samples,
-        #     model="gpt-4o-2024-05-13",  # use gpt-4o for now.
-        # )
-        config = create_codegeex_config(
+        config = create_chatgpt_config(
             message=message,
             max_tokens=self.max_tokens,
             temperature=temperature,
-            model="codegeex-4",
+            batch_size=num_samples,
+            model="gpt-4o-2024-05-13",  # use gpt-4o for now.
         )
+        # config = create_codegeex_config(
+        #     message=message,
+        #     max_tokens=self.max_tokens,
+        #     temperature=temperature,
+        #     model="codegeex-4",
+        # )
 
-        # ret = request_chatgpt_engine(config)
-        ret = request_codegeex_engine(config)
+        ret = request_chatgpt_engine(config)
+        # ret = request_codegeex_engine(config)
 
         raw_outputs = [choice.message.content for choice in ret.choices]
         traj = {

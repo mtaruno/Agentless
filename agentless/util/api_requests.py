@@ -4,8 +4,13 @@ from typing import Dict, Union
 
 import openai
 import tiktoken
+from agentless.util.codegeex4 import generate
+from zhipuai import ZhipuAI
+import os
 
-client = openai.OpenAI()
+
+client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+zhipu_client = ZhipuAI(api_key=os.environ.get("ZHIPU_API_KEY"))
 
 
 def num_tokens_from_messages(message, model="gpt-3.5-turbo-0301"):
@@ -21,6 +26,57 @@ def num_tokens_from_messages(message, model="gpt-3.5-turbo-0301"):
         num_tokens = len(encoding.encode(message))
     return num_tokens
 
+       
+# def create_codegeex_config(
+#     message: Union[str, list],
+#     max_tokens: int,
+#     temperature: float = 1,
+#     system_message: str = "You are a helpful assistant.",
+# ) -> Dict:
+#     if isinstance(message, list):
+#         config = {
+#             "max_tokens": max_tokens,
+#             "temperature": temperature,
+#             "prompt": f"<|assistant|>\n{system_message}\n<|user|>\n{message}\n<|assistant|>\n",
+#             "url": "http://172.18.64.110:9090/v1/completions"
+#         }
+#     else:
+#         config = {
+#             "max_tokens": max_tokens,
+#             "temperature": temperature,
+#             "prompt": f"<|assistant|>\n{system_message}\n<|user|>\n{message}\n<|assistant|>\n",
+#             "url" : "http://172.18.64.110:9090/v1/completions"
+#         }
+#     return config 
+
+
+# def request_codegeex_engine(config):
+#     ret = None
+#     while ret is None:
+#         try:
+#             signal.signal(signal.SIGALRM, handler)
+#             signal.alarm(100)
+#             ret = generate(**config)
+#             signal.alarm(0)
+#         except openai._exceptions.BadRequestError as e:
+#             print(e)
+#             signal.alarm(0)
+#         except openai._exceptions.RateLimitError as e:
+#             print("Rate limit exceeded. Waiting...")
+#             print(e)
+#             signal.alarm(0)
+#             time.sleep(5)
+#         except openai._exceptions.APIConnectionError as e:
+#             print("API connection error. Waiting...")
+#             signal.alarm(0)
+#             time.sleep(5)
+#         except Exception as e:
+#             print("Unknown error. Waiting...")
+#             print(e)
+#             signal.alarm(0)
+#             time.sleep(1)
+#     return ret
+    
 
 def create_chatgpt_config(
     message: Union[str, list],
@@ -64,6 +120,62 @@ def request_chatgpt_engine(config):
             signal.signal(signal.SIGALRM, handler)
             signal.alarm(100)
             ret = client.chat.completions.create(**config)
+            signal.alarm(0)
+        except openai._exceptions.BadRequestError as e:
+            print(e)
+            signal.alarm(0)
+        except openai._exceptions.RateLimitError as e:
+            print("Rate limit exceeded. Waiting...")
+            print(e)
+            signal.alarm(0)
+            time.sleep(5)
+        except openai._exceptions.APIConnectionError as e:
+            print("API connection error. Waiting...")
+            signal.alarm(0)
+            time.sleep(5)
+        except Exception as e:
+            print("Unknown error. Waiting...")
+            print(e)
+            signal.alarm(0)
+            time.sleep(1)
+    return ret
+
+
+
+
+def create_codegeex_config(
+    message: Union[str, list],
+    max_tokens: int,
+    temperature: float = 1,
+    batch_size: int = 1,
+    system_message: str = "You are a helpful assistant.",
+    model: str = "codegeex-4",
+) -> Dict:
+    if isinstance(message, list):
+        config = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [{"role": "system", "content": system_message}] + message,
+        }
+    else:
+        config = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": message},
+            ],
+        }
+    return config
+def request_codegeex_engine(config):
+    ret = None
+    while ret is None:
+        try:
+            signal.signal(signal.SIGALRM, handler)
+            signal.alarm(100)
+            ret = zhipu_client.chat.completions.create(**config)
             signal.alarm(0)
         except openai._exceptions.BadRequestError as e:
             print(e)

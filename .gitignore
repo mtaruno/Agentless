@@ -1,3 +1,4 @@
+/repo_structures
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -180,6 +181,7 @@ results/
 # data files
 *.jsonl
 *.json
+playground
 
 # Jupyter Notebooks
 *.ipynb
