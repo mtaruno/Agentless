@@ -6,13 +6,19 @@
 </p>
 
 <p align="center">
+    <big><a href="#-news">😽News</a></big> |
     <big><a href="#-setup">🐈Setup</a></big> |
     <big><a href="#-localization">🙀Localization</a></big> |
     <big><a href="#-repair">😼Repair</a></big> |
+    <big><a href="#-comparison">🧶Comparison</a></big> | 
     <big><a href="#-artifacts">🐈‍⬛Artifacts</a></big> |
     <big><a href="#-citation">📝Citation</a></big> |
-    <big><a href="#-acknowledgement">😽Acknowledgement</a></big>
+    <big><a href="#-acknowledgement">😻Acknowledgement</a></big>
 </p>
+
+## 😽 News 
+
+- *July 1st, 2024*: We just released OpenAutoCoder-Agentless 1.0! **Agentless** currently is the best open-source approach on SWE-bench lite with 82 fixes (27.3%) and costing on average $0.34 per issue.
 
 ## 😺 About 
 
@@ -212,6 +218,14 @@ In this case, we use `--num_samples 10` to pick from the 10 samples we generated
 
 This command will produced the `all_preds.jsonl` that contains the final selected patch for each instance_id which you can then directly use your favorite way of testing SWE-bench for evaluation!
 
+## 🧶 Comparison
+
+Below shows the comparison graph between **Agentless** and the best open-source agent-based approaches on SWE-bench lite
+
+<p align="center">
+<img src="./resources/comparison_graph.png" style="width:75%; margin-left: auto; margin-right: auto;">
+</p>
+
 ## 🐈‍⬛ Artifacts
 
 You can download the complete artifacts of **Agentless** in our [v0.1.0 release](https://github.com/OpenAutoCoder/Agentless/releases/tag/v0.1.0):
@@ -234,7 +248,7 @@ You can download the complete artifacts of **Agentless** in our [v0.1.0 release]
 > 
 > The first two authors contributed equally to this work, with author order determined via [*Nigiri*](https://senseis.xmp.net/?Nigiri)
 
-## 😽 Acknowledgement 
+## 😻 Acknowledgement 
 
 * [SWE-bench](https://www.swebench.com/)
 * [Aider](https://github.com/paul-gauthier/aider)
