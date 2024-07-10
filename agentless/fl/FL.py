@@ -252,7 +252,7 @@ Return just the locations.
                 "prompt": message,
                 "usage": {
                     "prompt_tokens": num_tokens_from_messages(
-                        message, "gpt-4o-2024-05-13"
+                        message, "codegeex-4"
                     ),
                 },
             }
@@ -430,7 +430,7 @@ Return just the locations.
         message = template.format(
             problem_statement=self.problem_statement, file_contents=file_contents
         )
-        assert num_tokens_from_messages(message, "gpt-4o-2024-05-13") < 128000
+        assert num_tokens_from_messages(message, "codegeex-4") < 128000
         logging.info(f"prompting with message:\n{message}")
         logging.info("=" * 80)
 
@@ -439,7 +439,7 @@ Return just the locations.
                 "prompt": message,
                 "usage": {
                     "prompt_tokens": num_tokens_from_messages(
-                        message, "gpt-4o-2024-05-13"
+                        message, "codegeex-4"
                     ),
                 },
             }
