@@ -148,7 +148,7 @@ def create_codegeex_config(
     max_tokens: int,
     temperature: float = 1,
     batch_size: int = 1,
-    system_message: str = "You are a helpful assistant.",
+    system_message: str = "You are an intelligent programming assistant named CodeGeeX. You will answer any questions users have about programming, coding, and computers, and provide code that is formatted correctly.",
     model: str = "codegeex-4",
 ) -> Dict:
     if isinstance(message, list):

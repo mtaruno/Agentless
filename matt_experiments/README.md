@@ -105,6 +105,5 @@ It seems that `num_samples` need to be increased for the localization steps to 4
 
 A little test using `agentless/util/codegeex4.py` to see if it works.
 
-In chatgpt config, there is `batch_size`. 
 
 

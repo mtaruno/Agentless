@@ -286,7 +286,7 @@ Return just the locations.
             },
         }
         model_found_files = self._parse_model_return_lines(raw_output)
-
+        
         files, classes, functions = get_full_file_paths_and_classes_and_functions(
             self.structure
         )
