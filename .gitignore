@@ -185,3 +185,5 @@ playground
 
 # Jupyter Notebooks
 *.ipynb
+
+keys.cfg

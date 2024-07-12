@@ -7,11 +7,11 @@ import tiktoken
 from agentless.util.codegeex4 import generate
 from zhipuai import ZhipuAI
 import os
+import config
 
-
+cfg = config.Config(os.path.join(os.getcwd(), "keys.cfg"))
 # client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-zhipu_client = ZhipuAI(api_key=os.environ.get("ZHIPU_API_KEY"))
-
+zhipu_client = ZhipuAI(api_key=cfg["ZHIPU_API_KEY"])
 
 def num_tokens_from_messages(message, model="gpt-3.5-turbo-0301"):
     """Returns the number of tokens used by a list of messages."""
@@ -164,7 +164,6 @@ def create_codegeex_config(
             "max_tokens": max_tokens,
             "temperature": temperature,
             "messages": [
-                {"role": "system", "content": system_message},
                 {"role": "user", "content": message},
             ],
         }

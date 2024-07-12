@@ -17,7 +17,6 @@ from agentless.util.api_requests import (
 )
 
 
-
 class FL(ABC):
     def __init__(self, instance_id, structure, problem_statement, **kwargs):
         self.structure = structure
@@ -136,7 +135,8 @@ The locations can be specified as class, method, or function names that require 
 
 ###
 
-Please provide the class, method, or function names that need to be edited.
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
 ### Examples:
 ```
 full_path1/file1.py
@@ -151,7 +151,7 @@ full_path3/file3.py
 function: my_function2
 ```
 
-Return just the location(s)
+Return multiple files and locations in a single response if need. Do not return any other information.
 """
     obtain_relevant_functions_from_compressed_files_prompt = """
 Please look through the following GitHub problem description and the skeleton of relevant files.
@@ -165,7 +165,9 @@ Provide a thorough set of locations that need inspection or editing to fix the p
 
 ###
 
-Please provide locations as either the class or the function name.
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+
 ### Examples:
 ```
 full_path1/file1.py
@@ -178,7 +180,7 @@ full_path3/file3.py
 function: my_function
 ```
 
-Return just the location(s)
+Return multiple files and locations in a single response if need. Do not return any other information.
 """
     obtain_relevant_functions_and_vars_from_compressed_files_prompt_more = """
 Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
@@ -192,10 +194,9 @@ For each location you provide, either give the name of the class, the name of a 
 {file_contents}
 
 ###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
 
-Please provide the complete set of locations as either a class name, a function name, or a variable name.
-Note that if you include a class, you do not need to list its specific methods.
-You can include either the entire class or don't include the class name and instead include specific methods in the class.
 ### Examples:
 ```
 full_path1/file1.py
@@ -213,8 +214,7 @@ function: my_function_3
 function: MyClass4.my_method_1
 class: MyClass5
 ```
-
-Return just the locations.
+Return multiple files and locations in a single response if need. Do not return any other information.
 """
 
     def __init__(self, instance_id, structure, problem_statement, **kwargs):
