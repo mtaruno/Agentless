@@ -1,0 +1,67 @@
+The issue described involves the multiplication of a prefix (`milli`) with a unit (`Watt`) resulting in an incorrect value (1 instead of `milliwatts`). The bug seems to be in the `__mul__` method of the `Prefix` class. The problem arises because the method only properly handles `Prefix` and `Quantity` types when performing multiplication.
+
+Let's fix this by ensuring that when a `Prefix` is multiplied by a `Quantity`, it properly creates a new `Quantity` representing the prefixed unit.
+
+Here are the required changes:
+
+```python
+### sympy/physics/units/prefixes.py
+<<<<<<< SEARCH
+        return self.scale_factor * other
+=======
+        if isinstance(other, Quantity):
+            return Quantity(
+                other.name, other.abbrev, other._latex_repr,
+                other._unicode_repr, other._ascii_repr,
+                other._mathml_repr, True) * self.scale_factor
+        else:
+            return self.scale_factor * other
+>>>>>>> REPLACE
+```
+
+Also, we need to ensure that the scale factor is correctly applied in the `Quantity` class:
+
+```python
+### sympy/physics/units/quantities.py
+<<<<<<< SEARCH
+        return unit_system.get_quantity_scale_factor(self)
+=======
+        scale_factor = unit_system.get_quantity_scale_factor(self)
+        if self.is_prefixed:
+            scale_factor *= self._scale_factor
+        return scale_factor
+>>>>>>> REPLACE
+```
+
+These changes ensure that the `Prefix` class correctly handles multiplication with `Quantity` instances and maintains the appropriate scale factor.
+
+Here are the full edits in context:
+
+```python
+### sympy/physics/units/prefixes.py
+<<<<<<< SEARCH
+        return self.scale_factor * other
+=======
+        if isinstance(other, Quantity):
+            return Quantity(
+                other.name, other.abbrev, other._latex_repr,
+                other._unicode_repr, other._ascii_repr,
+                other._mathml_repr, True) * self.scale_factor
+        else:
+            return self.scale_factor * other
+>>>>>>> REPLACE
+```
+
+```python
+### sympy/physics/units/quantities.py
+<<<<<<< SEARCH
+        return unit_system.get_quantity_scale_factor(self)
+=======
+        scale_factor = unit_system.get_quantity_scale_factor(self)
+        if self.is_prefixed:
+            scale_factor *= self._scale_factor
+        return scale_factor
+>>>>>>> REPLACE
+```
+
+These changes should resolve the issue where `milli*W` incorrectly evaluates to 1 instead of `milliwatts` (or `mW`).

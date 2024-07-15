@@ -375,6 +375,9 @@ def extract_python_blocks(text):
     # Regular expression pattern to match ```python\n{text}\n```
     pattern = r"```python\n(.*?)\n```"
 
+    with open("text.txt", "w") as f:
+        f.write(text)
+
     # Use re.findall to find all matches
     matches = re.findall(pattern, text, re.DOTALL)
 
@@ -393,21 +396,41 @@ def extract_code_blocks(text):
 
 def extract_locs_for_files(locs, file_names):
     # TODO: keep the order from this fine-grained FL results.
-    results = {fn: [] for fn in file_names}
+
+    
+
+    results = {fn: [] for fn in file_names} # dictionary with file names as the keys
+    with open("localize_related.txt", "a") as f:
+        f.write("Results Dict (contains filenames)\n" + str(results) + "\n"*3)
+        f.write("Locs:\n" + str(locs) + "\n"*3)
+
     current_file_name = None
     for loc in locs:
         for line in loc.splitlines():
+
+            with open("localize_related.txt", "a") as f:
+                f.write("Current Line:\n" + str(line) + "\n")
+
             if line.strip().endswith(".py"):
                 current_file_name = line.strip()
+              
             elif line.strip() and any(
                 line.startswith(w)
-                for w in ["line:", "function:", "class:", "variable:"]
+                for w in ["line:", "function:", "class:", "variable:", "path:"] # add a path 
             ):
-                if current_file_name in results:
+                if current_file_name in results: # only take file name in results 
                     results[current_file_name].append(line)
                 else:
                     pass
-    return [["\n".join(results[fn])] for fn in file_names]
+    output = [["\n".join(results[fn])] for fn in file_names]
+
+
+    with open("localize_related.txt", "a") as f:
+        f.write("Model Found Locs Separated:\n")
+        for i in output:
+            f.write(str(i) + "\n"*3)
+
+    return output
 
 
 def extract_starting_number(subcommand):

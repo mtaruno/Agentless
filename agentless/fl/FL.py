@@ -15,7 +15,19 @@ from agentless.util.api_requests import (
 	num_tokens_from_messages,
 	request_codegeex_engine
 )
+import re
 
+
+
+def extract_code(code):
+    if "```" in code:
+        pattern = r'```.*?\n(.*?)```'
+        matches = re.findall(pattern, code, re.DOTALL)
+        extracted_code = ''
+        for match in matches:
+            extracted_code += '```\n' + match + '```\n'
+        return extracted_code.strip()
+    return code
 
 class FL(ABC):
     def __init__(self, instance_id, structure, problem_statement, **kwargs):
@@ -42,13 +54,15 @@ Please look through the following GitHub problem description and Repository stru
 
 ###
 
-Please only provide the full path and return at most 5 files.
-The returned files should be separated by new lines ordered by most to least important and wrapped with ```
-For example:
+Task:
+Please only provide the full path and return at most 5 files. The returned files should be separated by new lines ordered by most to least important and wrapped with ```
+Pay attention that the response should be on the same format as the following example:
 ```
 file1.py
 file2.py
 ```
+
+Return the files single response. Do not return any other information.
 """
 
     obtain_relevant_code_prompt = """
@@ -59,12 +73,13 @@ Please look through the following GitHub problem description and file and provid
 
 ###
 
-### File: {file_name} ###
+###PATH:{file_name}
 {file_content}
 
 ###
+Task:
+Please provide either the class, the function name or line numbers that need to be edited. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following examples:
 
-Please provide either the class, the function name or line numbers that need to be edited.
 ### Example 1:
 ```
 class: MyClass
@@ -78,18 +93,16 @@ function: my_function
 line: 10
 line: 24
 ```
+Return just the location(s) in a single response if need. Do not return any other information.
 
-Return just the location(s)
 """
     file_content_template = """
-### File: {file_name} ###
+###PATH:{file_name}
 {file_content}
 """
     file_content_in_block_template = """
-### File: {file_name} ###
-```python
+###PATH: {file_name}
 {file_content}
-```
 """
     obtain_relevant_code_combine_top_n_prompt = """
 Please review the following GitHub problem description and relevant files, and provide a set of locations that need to be edited to fix the issue.
@@ -103,25 +116,24 @@ The locations can be specified as class names, function or method names, or exac
 
 ###
 
-Please provide the class name, function or method name, or the exact line numbers that need to be edited.
-### Examples:
+Task:
+Please provide the complete set of locations as either a class name, a function name, or line. Note that you need to start with the full path to the file when you want to include the line and class. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
 ```
-full_path1/file1.py
+path: path1/file1.py
 line: 10
 class: MyClass1
 line: 51
 
-full_path2/file2.py
+path: path2/file2.py
 function: MyClass2.my_method
 line: 12
 
-full_path3/file3.py
+path: path3/file3.py
 function: my_function
 line: 24
 line: 156
 ```
-
-Return just the location(s)
+Return just the location(s) in a single response if need. Do not return any other information.
 """
     obtain_relevant_code_combine_top_n_no_line_number_prompt = """
 Please review the following GitHub problem description and relevant files, and provide a set of locations that need to be edited to fix the issue.
@@ -136,18 +148,17 @@ The locations can be specified as class, method, or function names that require 
 ###
 
 Task:
-Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
-### Examples:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that for each function or class listed, it needs to be under a file (give the full path to the file ). Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
 ```
-full_path1/file1.py
+path: path1/file1.py
 function: my_function1
 class: MyClass1
 
-full_path2/file2.py
+path: path2/file2.py
 function: MyClass2.my_method
 class: MyClass3
 
-full_path3/file3.py
+path: path3/file3.py
 function: my_function2
 ```
 
@@ -166,21 +177,19 @@ Provide a thorough set of locations that need inspection or editing to fix the p
 ###
 
 Task:
-Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
-
-### Examples:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that for each function or class listed, it needs to be under a file (give the full path to the file ). Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
 ```
-full_path1/file1.py
+path: path1/file1.py
 class: MyClass1
 
-full_path2/file2.py
+path: path2/file2.py
 function: MyClass2.my_method
 
-full_path3/file3.py
+path: path3/file3.py
 function: my_function
 ```
 
-Return multiple files and locations in a single response if need. Do not return any other information.
+Return multiple files in a single response if need. Do not return any other information.
 """
     obtain_relevant_functions_and_vars_from_compressed_files_prompt_more = """
 Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
@@ -196,19 +205,17 @@ For each location you provide, either give the name of the class, the name of a 
 ###
 Task:
 Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
-
-### Examples:
 ```
-full_path1/file1.py
+path: path1/file1.py
 function: my_function_1
 class: MyClass1
 function: MyClass2.my_method
 
-full_path2/file2.py
+path: path2/file2.py
 variable: my_var
 function: MyClass3.my_method
 
-full_path3/file3.py
+path: path3/file3.py
 function: my_function_2
 function: my_function_3
 function: MyClass4.my_method_1
@@ -276,7 +283,7 @@ Return multiple files and locations in a single response if need. Do not return 
         )
 
         ret = request_codegeex_engine(config)
-        raw_output = ret.choices[0].message.content
+        raw_output = extract_code(ret.choices[0].message.content)
         traj = {
             "prompt": message,
             "response": raw_output,
@@ -383,7 +390,7 @@ Return multiple files and locations in a single response if need. Do not return 
         # ret = request_chatgpt_engine(config)
         ret = request_codegeex_engine(config)
 
-        raw_output = ret.choices[0].message.content
+        raw_output = extract_code(ret.choices[0].message.content)
         traj = {
             "prompt": message,
             "response": raw_output,
@@ -419,6 +426,11 @@ Return multiple files and locations in a single response if need. Do not return 
         compressed_file_contents = {
             fn: get_skeleton(code) for fn, code in file_contents.items()
         }
+
+        with open("localize_related.txt", "a") as f: 
+            f.write("Compressed file contents:\n")
+            f.write(f"{compressed_file_contents}" + "\n"*15) # compressed file contents are the skeleton
+
         contents = [
             self.file_content_in_block_template.format(file_name=fn, file_content=code)
             for fn, code in compressed_file_contents.items()
@@ -461,7 +473,7 @@ Return multiple files and locations in a single response if need. Do not return 
             temperature=0,
         )
         ret = request_codegeex_engine(config)
-        raw_output = ret.choices[0].message.content
+        raw_output = extract_code(ret.choices[0].message.content)
         traj = {
             "prompt": message,
             "response": raw_output,
@@ -472,6 +484,11 @@ Return multiple files and locations in a single response if need. Do not return 
         }
 
         model_found_locs = extract_code_blocks(raw_output)
+
+        with open("localize_related.txt", "a") as f:
+            f.write("Model found locs\n")
+            f.write(f"{model_found_locs}" + "\n"*15)
+
         model_found_locs_separated = extract_locs_for_files(
             model_found_locs, file_names
         )
@@ -553,7 +570,8 @@ Return multiple files and locations in a single response if need. Do not return 
         # ret = request_chatgpt_engine(config)
         ret = request_codegeex_engine(config)
 
-        raw_outputs = [choice.message.content for choice in ret.choices]
+        raw_outputs = [extract_code(choice.message.content) for choice in ret.choices]
+
         traj = {
             "prompt": message,
             "response": raw_outputs,

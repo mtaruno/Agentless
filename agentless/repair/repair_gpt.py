@@ -426,13 +426,7 @@ def repair(args):
                     batch_size=1,
                     model=args.model,  # use gpt-4o for now.
                 )
-                # config = create_codegeex_config(
-                #     message=message,
-                #     max_tokens=1024,
-                #     temperature=0,
-                # )
-                
-                # greedy_response = request_codegeex_engine(config)
+            
                 greedy_response = request_chatgpt_engine(config)
                 return {
                     "response": greedy_response.choices[0].message.content,

@@ -1,0 +1,6422 @@
+0
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Modeling's `separability_matrix` does not compute separability correctly for nested CompoundModels
+Consider the following model:
+
+```python
+from astropy.modeling import models as m
+from astropy.modeling.separable import separability_matrix
+
+cm = m.Linear1D(10) & m.Linear1D(5)
+```
+
+It's separability matrix as you might expect is a diagonal:
+
+```python
+>>> separability_matrix(cm)
+array([[ True, False],
+       [False,  True]])
+```
+
+If I make the model more complex:
+```python
+>>> separability_matrix(m.Pix2Sky_TAN() & m.Linear1D(10) & m.Linear1D(5))
+array([[ True,  True, False, False],
+       [ True,  True, False, False],
+       [False, False,  True, False],
+       [False, False, False,  True]])
+```
+
+The output matrix is again, as expected, the outputs and inputs to the linear models are separable and independent of each other.
+
+If however, I nest these compound models:
+```python
+>>> separability_matrix(m.Pix2Sky_TAN() & cm)
+array([[ True,  True, False, False],
+       [ True,  True, False, False],
+       [False, False,  True,  True],
+       [False, False,  True,  True]])
+```
+Suddenly the inputs and outputs are no longer separable?
+
+This feels like a bug to me, but I might be missing something?
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: astropy/modeling/separable.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+
+
+
+__all__ = ["is_separable", "separability_matrix"]
+
+
+def is_separable(transform):
+...
+
+def separability_matrix(transform):
+...
+
+def _compute_n_outputs(left, right):
+...
+
+def _arith_oper(left, right):
+...
+
+def _coord_matrix(model, pos, noutp):
+...
+
+def _cstack(left, right):
+...
+
+def _cdot(left, right):
+...
+
+def _separable(transform):
+...
+
+# Maps modeling operators to a function computing and represents the
+# relationship of axes as an array of 0-es and 1-s
+_operators = {'&': _cstack, '|': _cdot, '+': _arith_oper, '-': _arith_oper,
+              '*': _arith_oper, '/': _arith_oper, '**': _arith_oper}
+
+### PATH: astropy/modeling/fitting.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+
+
+__all__ = ['LinearLSQFitter', 'LevMarLSQFitter', 'FittingWithOutlierRemoval',
+           'SLSQPLSQFitter', 'SimplexLSQFitter', 'JointFitter', 'Fitter',
+           "ModelLinearityError", "ModelsError"]
+
+
+# Statistic functions implemented in `astropy.modeling.statistic.py
+STATISTICS = [leastsquare]
+
+# Optimizers implemented in `astropy.modeling.optimizers.py
+OPTIMIZERS = [Simplex, SLSQP]
+
+
+class Covariance():
+
+    def __init__(self, cov_matrix, param_names):
+...
+    def pprint(self, max_lines, round_val):
+...
+    def __repr__(self):
+...
+    def __getitem__(self, params):
+...
+
+class StandardDeviations():
+
+    def __init__(self, cov_matrix, param_names):
+...
+    def _calc_stds(self, cov_matrix):
+...
+    def pprint(self, max_lines, round_val):
+...
+    def __repr__(self):
+...
+    def __getitem__(self, param):
+...
+
+class ModelsError(Exception):
+    pass
+
+
+class ModelLinearityError(ModelsError):
+    pass
+
+
+class UnsupportedConstraintError(ModelsError, ValueError):
+    pass
+
+
+class _FitterMeta(abc.ABCMeta):
+
+    registry = set()
+
+    def __new__(mcls, name, bases, members):
+...
+
+def fitter_unit_support(func):
+...
+
+class Fitter(metaclass=_FitterMeta):
+
+    supported_constraints = []
+
+    def __init__(self, optimizer, statistic):
+...
+    def objective_function(self, fps, *args):
+...
+    @staticmethod
+    def _add_fitting_uncertainties(*args):
+...
+    @abc.abstractmethod
+    def __call__(self):
+...
+
+# TODO: I have ongoing branch elsewhere that's refactoring this module so that
+# all the fitter classes in here are Fitter subclasses.  In the meantime we
+# need to specify that _FitterMeta is its metaclass.
+class LinearLSQFitter(metaclass=_FitterMeta):
+
+    supported_constraints = ['fixed']
+    supports_masked_input = True
+
+    def __init__(self, calc_uncertainties=False):
+...
+    @staticmethod
+    def _is_invertible(m):
+...
+    def _add_fitting_uncertainties(self, model, a, n_coeff, x, y, z=None,
+                                   resids=None):
+...
+    @staticmethod
+    def _deriv_with_constraints(model, param_indices, x=None, y=None):
+...
+    def _map_domain_window(self, model, x, y=None):
+...
+    @fitter_unit_support
+    def __call__(self, model, x, y, z=None, weights=None, rcond=None):
+...
+
+class FittingWithOutlierRemoval:
+
+    def __init__(self, fitter, outlier_func, niter=3, **outlier_kwargs):
+...
+    def __str__(self):
+...
+    def __repr__(self):
+...
+    def __call__(self, model, x, y, z=None, weights=None, **kwargs):
+...
+
+class LevMarLSQFitter(metaclass=_FitterMeta):
+
+    supported_constraints = ['fixed', 'tied', 'bounds']
+
+    def __init__(self, calc_uncertainties=False):
+...
+    def objective_function(self, fps, *args):
+...
+    @staticmethod
+    def _add_fitting_uncertainties(model, cov_matrix):
+...
+    @fitter_unit_support
+    def __call__(self, model, x, y, z=None, weights=None,
+                 maxiter=DEFAULT_MAXITER, acc=DEFAULT_ACC,
+                 epsilon=DEFAULT_EPS, estimate_jacobian=False):
+...
+    @staticmethod
+    def _wrap_deriv(params, model, weights, x, y, z=None):
+...
+
+class SLSQPLSQFitter(Fitter):
+
+    supported_constraints = SLSQP.supported_constraints
+
+    def __init__(self):
+...
+    @fitter_unit_support
+    def __call__(self, model, x, y, z=None, weights=None, **kwargs):
+...
+
+class SimplexLSQFitter(Fitter):
+
+    supported_constraints = Simplex.supported_constraints
+
+    def __init__(self):
+...
+    @fitter_unit_support
+    def __call__(self, model, x, y, z=None, weights=None, **kwargs):
+...
+
+class JointFitter(metaclass=_FitterMeta):
+
+    def __init__(self, models, jointparameters, initvals):
+...
+    def model_to_fit_params(self):
+...
+    def objective_function(self, fps, *args):
+...
+    def _verify_input(self):
+...
+    def __call__(self, *args):
+...
+
+def _convert_input(x, y, z=None, n_models=1, model_set_axis=0):
+...
+
+# TODO: These utility functions are really particular to handling
+# bounds/tied/fixed constraints for scipy.optimize optimizers that do not
+# support them inherently; this needs to be reworked to be clear about this
+# distinction (and the fact that these are not necessarily applicable to any
+# arbitrary fitter--as evidenced for example by the fact that JointFitter has
+# its own versions of these)
+# TODO: Most of this code should be entirely rewritten; it should not be as
+# inefficient as it is.
+def fitter_to_model_params(model, fps):
+...
+
+@deprecated('5.1', 'private method: _fitter_to_model_params has been made public now')
+def _fitter_to_model_params(model, fps):
+...
+
+def model_to_fit_params(model):
+...
+
+@deprecated('5.1', 'private method: _model_to_fit_params has been made public now')
+def _model_to_fit_params(model):
+...
+
+def _validate_constraints(supported_constraints, model):
+...
+
+def _validate_model(model, supported_constraints):
+...
+
+def populate_entry_points(entry_points):
+...
+
+def _populate_ep():
+
+
+### PATH: astropy/modeling/parameters.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+# pylint: disable=invalid-name
+
+
+
+__all__ = ['Parameter', 'InputParameterError', 'ParameterError']
+
+
+class ParameterError(Exception):
+    pass
+
+
+class InputParameterError(ValueError, ParameterError):
+    pass
+
+
+class ParameterDefinitionError(ParameterError):
+    pass
+
+
+def _tofloat(value):
+...
+
+# Helpers for implementing operator overloading on Parameter
+
+def _binary_arithmetic_operation(op, reflected=False):
+...
+
+def _binary_comparison_operation(op):
+...
+
+def _unary_arithmetic_operation(op):
+...
+
+class Parameter:
+
+    constraints = ('fixed', 'tied', 'bounds')
+
+    def __init__(self, name='', description='', default=None, unit=None,
+                 getter=None, setter=None, fixed=False, tied=False, min=None,
+                 max=None, bounds=None, prior=None, posterior=None):
+...
+    def __set_name__(self, owner, name):
+...
+    def __len__(self):
+...
+    def __getitem__(self, key):
+...
+    def __setitem__(self, key, value):
+...
+    def __repr__(self):
+...
+    @property
+    def name(self):
+...
+    @property
+    def default(self):
+...
+    @property
+    def value(self):
+...
+    @value.setter
+    def value(self, value):
+...
+    @property
+    def unit(self):
+...
+    @unit.setter
+    def unit(self, unit):
+...
+    def _set_unit(self, unit, force=False):
+...
+    @property
+    def internal_unit(self):
+...
+    @internal_unit.setter
+    def internal_unit(self, internal_unit):
+...
+    @property
+    def quantity(self):
+...
+    @quantity.setter
+    def quantity(self, quantity):
+...
+    @property
+    def shape(self):
+...
+    @shape.setter
+    def shape(self, value):
+...
+    @property
+    def size(self):
+...
+    @property
+    def std(self):
+...
+    @std.setter
+    def std(self, value):
+...
+    @property
+    def prior(self):
+...
+    @prior.setter
+    def prior(self, val):
+...
+    @property
+    def posterior(self):
+...
+    @posterior.setter
+    def posterior(self, val):
+...
+    @property
+    def fixed(self):
+...
+    @fixed.setter
+    def fixed(self, value):
+...
+    @property
+    def tied(self):
+...
+    @tied.setter
+    def tied(self, value):
+...
+    @property
+    def bounds(self):
+...
+    @bounds.setter
+    def bounds(self, value):
+...
+    @property
+    def min(self):
+...
+    @min.setter
+    def min(self, value):
+...
+    @property
+    def max(self):
+...
+    @max.setter
+    def max(self, value):
+...
+    @property
+    def validator(self):
+...
+    def validate(self, value):
+...
+    def copy(self, name=None, description=None, default=None, unit=None,
+             getter=None, setter=None, fixed=False, tied=False, min=None,
+             max=None, bounds=None, prior=None, posterior=None):
+...
+    @property
+    def model(self):
+...
+    @model.setter
+    def model(self, value):
+...
+    @property
+    def _raw_value(self):
+...
+    def _create_value_wrapper(self, wrapper, model):
+...
+    def __array__(self, dtype=None):
+...
+    def __bool__(self):
+...
+    __add__ = _binary_arithmetic_operation(operator.add)
+    __radd__ = _binary_arithmetic_operation(operator.add, reflected=True)
+    __sub__ = _binary_arithmetic_operation(operator.sub)
+    __rsub__ = _binary_arithmetic_operation(operator.sub, reflected=True)
+    __mul__ = _binary_arithmetic_operation(operator.mul)
+    __rmul__ = _binary_arithmetic_operation(operator.mul, reflected=True)
+    __pow__ = _binary_arithmetic_operation(operator.pow)
+    __rpow__ = _binary_arithmetic_operation(operator.pow, reflected=True)
+    __truediv__ = _binary_arithmetic_operation(operator.truediv)
+    __rtruediv__ = _binary_arithmetic_operation(operator.truediv,
+                                                reflected=True)
+    __eq__ = _binary_comparison_operation(operator.eq)
+    __ne__ = _binary_comparison_operation(operator.ne)
+    __lt__ = _binary_comparison_operation(operator.lt)
+    __gt__ = _binary_comparison_operation(operator.gt)
+    __le__ = _binary_comparison_operation(operator.le)
+    __ge__ = _binary_comparison_operation(operator.ge)
+    __neg__ = _unary_arithmetic_operation(operator.neg)
+    __abs__ = _unary_arithmetic_operation(operator.abs)
+
+
+def param_repr_oneline(param):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+1
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Please support header rows in RestructuredText output
+### Description
+
+It would be great if the following would work:
+
+```Python
+>>> from astropy.table import QTable
+>>> import astropy.units as u
+>>> import sys
+>>> tbl = QTable({'wave': [350,950]*u.nm, 'response': [0.7, 1.2]*u.count})
+>>> tbl.write(sys.stdout,  format="ascii.rst")
+===== ========
+ wave response
+===== ========
+350.0      0.7
+950.0      1.2
+===== ========
+>>> tbl.write(sys.stdout,  format="ascii.fixed_width", header_rows=["name", "unit"])
+|  wave | response |
+|    nm |       ct |
+| 350.0 |      0.7 |
+| 950.0 |      1.2 |
+>>> tbl.write(sys.stdout,  format="ascii.rst", header_rows=["name", "unit"])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "/usr/lib/python3/dist-packages/astropy/table/connect.py", line 129, in __call__
+    self.registry.write(instance, *args, **kwargs)
+  File "/usr/lib/python3/dist-packages/astropy/io/registry/core.py", line 369, in write
+    return writer(data, *args, **kwargs)
+  File "/usr/lib/python3/dist-packages/astropy/io/ascii/connect.py", line 26, in io_write
+    return write(table, filename, **kwargs)
+  File "/usr/lib/python3/dist-packages/astropy/io/ascii/ui.py", line 856, in write
+    writer = get_writer(Writer=Writer, fast_writer=fast_writer, **kwargs)
+  File "/usr/lib/python3/dist-packages/astropy/io/ascii/ui.py", line 800, in get_writer
+    writer = core._get_writer(Writer, fast_writer, **kwargs)
+  File "/usr/lib/python3/dist-packages/astropy/io/ascii/core.py", line 1719, in _get_writer
+    writer = Writer(**writer_kwargs)
+TypeError: RST.__init__() got an unexpected keyword argument 'header_rows'
+```
+
+
+### Additional context
+
+RestructuredText output is a great way to fill autogenerated documentation with content, so having this flexible makes the life easier `:-)`
+
+
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: astropy/io/ascii/core.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+
+# Global dictionary mapping format arg to the corresponding Reader class
+FORMAT_CLASSES = {}
+
+# Similar dictionary for fast readers
+FAST_CLASSES = {}
+
+
+def _check_multidim_table(table, max_ndim):
+...
+
+class CsvWriter:
+
+    # Random 16-character string that gets injected instead of any
+    # empty fields and is then replaced post-write with doubled-quotechar.
+    # Created with:
+    # ''.join(random.choice(string.printable[:90]) for _ in range(16))
+    replace_sentinel = "2b=48Av%0-V3p>bX"
+
+    def __init__(self, csvfile=None, **kwargs):
+...
+    def writerow(self, values):
+...
+    def writerows(self, values_list):
+...
+    def _writerow(self, writerow_func, values, has_empty):
+...
+
+class MaskedConstant(numpy.ma.core.MaskedConstant):
+
+    def __hash__(self):
+...
+    def __copy__(self):
+...
+    def __deepcopy__(self, memo):
+...
+
+masked = MaskedConstant()
+
+
+class InconsistentTableError(ValueError):
+    pass
+
+
+class OptionalTableImportError(ImportError):
+    pass
+
+
+class ParameterError(NotImplementedError):
+    pass
+
+
+class FastOptionsError(NotImplementedError):
+    pass
+
+
+class NoType:
+    pass
+
+
+class StrType(NoType):
+    pass
+
+
+class NumType(NoType):
+    pass
+
+
+class FloatType(NumType):
+    pass
+
+
+class BoolType(NoType):
+    pass
+
+
+class IntType(NumType):
+    pass
+
+
+class AllType(StrType, FloatType, IntType):
+    pass
+
+
+class Column:
+
+    def __init__(self, name):
+...
+
+class BaseInputter:
+
+    encoding = None
+
+    def get_lines(self, table, newline=None):
+...
+    def process_lines(self, lines):
+...
+
+class BaseSplitter:
+
+    delimiter = None
+
+    def process_line(self, line):
+...
+    def process_val(self, val):
+...
+    def __call__(self, lines):
+...
+    def join(self, vals):
+...
+
+class DefaultSplitter(BaseSplitter):
+
+    delimiter = " "
+    quotechar = '"'
+    doublequote = True
+    escapechar = None
+    quoting = csv.QUOTE_MINIMAL
+    skipinitialspace = True
+    csv_writer = None
+    csv_writer_out = StringIO()
+
+    def process_line(self, line):
+...
+    def process_val(self, val):
+...
+    def __call__(self, lines):
+...
+    def join(self, vals):
+...
+
+def _replace_tab_with_space(line, escapechar, quotechar):
+...
+
+def _get_line_index(line_or_func, lines):
+...
+
+class BaseHeader:
+
+    auto_format = "col{}"
+    start_line = None
+    comment = None
+    splitter_class = DefaultSplitter
+    names = None
+    write_comment = False
+    write_spacer_lines = ["ASCII_TABLE_WRITE_SPACER_LINE"]
+
+    def __init__(self):
+...
+    def _set_cols_from_names(self):
+...
+    def update_meta(self, lines, meta):
+...
+    def get_cols(self, lines):
+...
+    def process_lines(self, lines):
+...
+    def write_comments(self, lines, meta):
+...
+    def write(self, lines):
+...
+    @property
+    def colnames(self):
+...
+    def remove_columns(self, names):
+...
+    def rename_column(self, name, new_name):
+...
+    def get_type_map_key(self, col):
+...
+    def get_col_type(self, col):
+...
+    def check_column_names(self, names, strict_names, guessing):
+...
+
+class BaseData:
+
+    start_line = None
+    end_line = None
+    comment = None
+    splitter_class = DefaultSplitter
+    write_spacer_lines = ["ASCII_TABLE_WRITE_SPACER_LINE"]
+    fill_include_names = None
+    fill_exclude_names = None
+    fill_values = [(masked, "")]
+    formats = {}
+
+    def __init__(self):
+...
+    def process_lines(self, lines):
+...
+    def get_data_lines(self, lines):
+...
+    def get_str_vals(self):
+...
+    def masks(self, cols):
+...
+    def _set_fill_values(self, cols):
+...
+    def _set_masks(self, cols):
+...
+    def _replace_vals(self, cols):
+...
+    def str_vals(self):
+...
+    def write(self, lines):
+...
+    def _set_col_formats(self):
+...
+
+def convert_numpy(numpy_type):
+...
+
+class BaseOutputter:
+
+    # User-defined converters which gets set in ascii.ui if a `converter` kwarg
+    # is supplied.
+    converters = {}
+
+    # Derived classes must define default_converters and __call__
+
+    @staticmethod
+    def _validate_and_copy(col, converters):
+...
+    def _convert_vals(self, cols):
+...
+
+def _deduplicate_names(names):
+...
+
+class TableOutputter(BaseOutputter):
+
+    default_converters = [convert_numpy(int), convert_numpy(float), convert_numpy(str)]
+
+    def __call__(self, cols, meta):
+...
+
+class MetaBaseReader(type):
+    def __init__(cls, name, bases, dct):
+...
+
+def _is_number(x):
+...
+
+def _apply_include_exclude_names(table, names, include_names, exclude_names):
+...
+
+class BaseReader(metaclass=MetaBaseReader):
+
+    names = None
+    include_names = None
+    exclude_names = None
+    strict_names = False
+    guessing = False
+    encoding = None
+
+    header_class = BaseHeader
+    data_class = BaseData
+    inputter_class = BaseInputter
+    outputter_class = TableOutputter
+
+    # Max column dimension that writer supports for this format. Exceptions
+    # include ECSV (no limit) and HTML (max_ndim=2).
+    max_ndim = 1
+
+    def __init__(self):
+...
+    def _check_multidim_table(self, table):
+...
+    def read(self, table):
+...
+    def inconsistent_handler(self, str_vals, ncols):
+...
+    @property
+    def comment_lines(self):
+...
+    def update_table_data(self, table):
+...
+    def write_header(self, lines, meta):
+...
+    def write(self, table):
+...
+
+class ContinuationLinesInputter(BaseInputter):
+
+    continuation_char = "\\"
+    replace_char = " "
+    # If no_continue is not None then lines matching this regex are not subject
+    # to line continuation.  The initial use case here is Daophot.  In this
+    # case the continuation character is just replaced with replace_char.
+    no_continue = None
+
+    def process_lines(self, lines):
+...
+
+class WhitespaceSplitter(DefaultSplitter):
+    def process_line(self, line):
+...
+
+extra_reader_pars = (
+    "Reader",
+    "Inputter",
+    "Outputter",
+    "delimiter",
+    "comment",
+    "quotechar",
+    "header_start",
+    "data_start",
+    "data_end",
+    "converters",
+    "encoding",
+    "data_Splitter",
+    "header_Splitter",
+    "names",
+    "include_names",
+    "exclude_names",
+    "strict_names",
+    "fill_values",
+    "fill_include_names",
+    "fill_exclude_names",
+)
+
+
+def _get_reader(Reader, Inputter=None, Outputter=None, **kwargs):
+...
+
+extra_writer_pars = (
+    "delimiter",
+    "comment",
+    "quotechar",
+    "formats",
+    "strip_whitespace",
+    "names",
+    "include_names",
+    "exclude_names",
+    "fill_values",
+    "fill_include_names",
+    "fill_exclude_names",
+)
+
+
+def _get_writer(Writer, fast_writer, **kwargs):
+
+
+### PATH: astropy/io/ascii/ui.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+
+_read_trace = []
+
+# Default setting for guess parameter in read()
+_GUESS = True
+
+
+def _probably_html(table, maxchars=100000):
+...
+
+def set_guess(guess):
+...
+
+def get_reader(Reader=None, Inputter=None, Outputter=None, **kwargs):
+...
+
+def _get_format_class(format, ReaderWriter, label):
+...
+
+def _get_fast_reader_dict(kwargs):
+...
+
+def _validate_read_write_kwargs(read_write, **kwargs):
+...
+
+def _expand_user_if_path(argument):
+...
+
+def read(table, guess=None, **kwargs):
+...
+
+read.__doc__ = core.READ_DOCSTRING
+
+
+def _guess(table, read_kwargs, format, fast_reader):
+...
+
+def _get_guess_kwargs_list(read_kwargs):
+...
+
+def _read_in_chunks(table, **kwargs):
+...
+
+def _read_in_chunks_generator(table, chunk_size, **kwargs):
+...
+
+extra_writer_pars = (
+    "delimiter",
+    "comment",
+    "quotechar",
+    "formats",
+    "names",
+    "include_names",
+    "exclude_names",
+    "strip_whitespace",
+)
+
+
+def get_writer(Writer=None, fast_writer=True, **kwargs):
+...
+
+def write(
+    table,
+    output=None,
+    format=None,
+    Writer=None,
+    fast_writer=True,
+    *,
+    overwrite=False,
+    **kwargs,
+):
+...
+
+write.__doc__ = core.WRITE_DOCSTRING
+
+
+def get_read_trace():
+
+
+### PATH: astropy/io/ascii/connect.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+# This file connects the readers/writers to the astropy.table.Table class
+
+
+
+__all__ = []
+
+
+def io_read(format, filename, **kwargs):
+...
+
+def io_write(format, table, filename, **kwargs):
+...
+
+def io_identify(suffix, origin, filepath, fileobj, *args, **kwargs):
+...
+
+def _get_connectors_table():
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+2
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+ascii.qdp Table format assumes QDP commands are upper case
+### Description
+
+ascii.qdp assumes that commands in a QDP file are upper case, for example, for errors they must be "READ SERR 1 2" whereas QDP itself is not case sensitive and case use "read serr 1 2". 
+
+As many QDP files are created by hand, the expectation that all commands be all-caps should be removed.
+
+### Expected behavior
+
+The following qdp file should read into a `Table` with errors, rather than crashing.
+```
+read serr 1 2 
+1 0.5 1 0.5
+```
+
+### How to Reproduce
+
+Create a QDP file:
+```
+> cat > test.qdp
+read serr 1 2 
+1 0.5 1 0.5
+<EOF>
+
+ > python
+Python 3.10.9 (main, Dec  7 2022, 02:03:23) [Clang 13.0.0 (clang-1300.0.29.30)] on darwin
+Type "help", "copyright", "credits" or "license" for more information.
+>>> from astropy.table import Table
+>>> Table.read('test.qdp',format='ascii.qdp')
+WARNING: table_id not specified. Reading the first available table [astropy.io.ascii.qdp]
+Traceback (most recent call last):
+...
+    raise ValueError(f'Unrecognized QDP line: {line}')
+ValueError: Unrecognized QDP line: read serr 1 2
+```
+
+Running "qdp test.qdp" works just fine.
+
+
+### Versions
+
+Python 3.10.9 (main, Dec  7 2022, 02:03:23) [Clang 13.0.0 (clang-1300.0.29.30)]
+astropy 5.1
+Numpy 1.24.1
+pyerfa 2.0.0.1
+Scipy 1.10.0
+Matplotlib 3.6.3
+
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: astropy/io/ascii/qdp.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+
+
+def _line_type(line, delimiter=None):
+...
+
+def _get_type_from_list_of_lines(lines, delimiter=None):
+...
+
+def _get_lines_from_file(qdp_file):
+...
+
+def _interpret_err_lines(err_specs, ncols, names=None):
+...
+
+def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+...
+
+def _understand_err_col(colnames):
+...
+
+def _read_table_qdp(qdp_file, names=None, table_id=None, delimiter=None):
+...
+
+def _write_table_qdp(table, filename=None, err_specs=None):
+...
+
+class QDPSplitter(core.DefaultSplitter):
+
+    delimiter = " "
+
+
+class QDPHeader(basic.CommentedHeaderHeader):
+
+    splitter_class = QDPSplitter
+    comment = "!"
+    write_comment = "!"
+
+
+class QDPData(basic.BasicData):
+
+    splitter_class = QDPSplitter
+    fill_values = [(core.masked, "NO")]
+    comment = "!"
+    write_comment = None
+
+
+class QDP(basic.Basic):
+
+    _format_name = "qdp"
+    _io_registry_can_write = True
+    _io_registry_suffix = ".qdp"
+    _description = "Quick and Dandy Plotter"
+
+    header_class = QDPHeader
+    data_class = QDPData
+
+    def __init__(self, table_id=None, names=None, err_specs=None, sep=None):
+...
+    def read(self, table):
+...
+    def write(self, table):
+
+
+### PATH: astropy/table/table.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+
+_implementation_notes = """
+This string has informal notes concerning Table implementation for developers.
+
+Things to remember:
+
+- Table has customizable attributes ColumnClass, Column, MaskedColumn.
+  Table.Column is normally just column.Column (same w/ MaskedColumn)
+  but in theory they can be different.  Table.ColumnClass is the default
+  class used to create new non-mixin columns, and this is a function of
+  the Table.masked attribute.  Column creation / manipulation in a Table
+  needs to respect these.
+
+- Column objects that get inserted into the Table.columns attribute must
+  have the info.parent_table attribute set correctly.  Beware just dropping
+  an object into the columns dict since an existing column may
+  be part of another Table and have parent_table set to point at that
+  table.  Dropping that column into `columns` of this Table will cause
+  a problem for the old one so the column object needs to be copied (but
+  not necessarily the data).
+
+  Currently replace_column is always making a copy of both object and
+  data if parent_table is set.  This could be improved but requires a
+  generic way to copy a mixin object but not the data.
+
+- Be aware of column objects that have indices set.
+
+- `cls.ColumnClass` is a property that effectively uses the `masked` attribute
+  to choose either `cls.Column` or `cls.MaskedColumn`.
+"""
+
+__doctest_skip__ = [
+    "Table.read",
+    "Table.write",
+    "Table._read",
+    "Table.convert_bytestring_to_unicode",
+    "Table.convert_unicode_to_bytestring",
+]
+
+__doctest_requires__ = {"*pandas": ["pandas>=1.1"]}
+
+_pprint_docs = """
+    {__doc__}
+
+    Parameters
+    ----------
+    max_lines : int or None
+        Maximum number of lines in table output.
+
+    max_width : int or None
+        Maximum character width of output.
+
+    show_name : bool
+        Include a header row for column names. Default is True.
+
+    show_unit : bool
+        Include a header row for unit.  Default is to show a row
+        for units only if one or more columns has a defined value
+        for the unit.
+
+    show_dtype : bool
+        Include a header row for column dtypes. Default is False.
+
+    align : str or list or tuple or None
+        Left/right alignment of columns. Default is right (None) for all
+        columns. Other allowed values are '>', '<', '^', and '0=' for
+        right, left, centered, and 0-padded, respectively. A list of
+        strings can be provided for alignment of tables with multiple
+        columns.
+    """
+
+_pformat_docs = """
+    {__doc__}
+
+    Parameters
+    ----------
+    max_lines : int or None
+        Maximum number of rows to output
+
+    max_width : int or None
+        Maximum character width of output
+
+    show_name : bool
+        Include a header row for column names. Default is True.
+
+    show_unit : bool
+        Include a header row for unit.  Default is to show a row
+        for units only if one or more columns has a defined value
+        for the unit.
+
+    show_dtype : bool
+        Include a header row for column dtypes. Default is True.
+
+    html : bool
+        Format the output as an HTML table. Default is False.
+
+    tableid : str or None
+        An ID tag for the table; only used if html is set.  Default is
+        "table{id}", where id is the unique integer id of the table object,
+        id(self)
+
+    align : str or list or tuple or None
+        Left/right alignment of columns. Default is right (None) for all
+        columns. Other allowed values are '>', '<', '^', and '0=' for
+        right, left, centered, and 0-padded, respectively. A list of
+        strings can be provided for alignment of tables with multiple
+        columns.
+
+    tableclass : str or list of str or None
+        CSS classes for the table; only used if html is set.  Default is
+        None.
+
+    Returns
+    -------
+    lines : list
+        Formatted table as a list of strings.
+    """
+
+
+class TableReplaceWarning(UserWarning):
+
+    pass
+
+
+def descr(col):
+...
+
+def has_info_class(obj, cls):
+...
+
+def _get_names_from_list_of_dict(rows):
+...
+
+# Note to future maintainers: when transitioning this to dict
+# be sure to change the OrderedDict ref(s) in Row and in __len__().
+
+
+class TableColumns(OrderedDict):
+
+    def __init__(self, cols={}):
+...
+    def __getitem__(self, item):
+...
+    def __setitem__(self, item, value, validated=False):
+...
+    def __repr__(self):
+...
+    def _rename_column(self, name, new_name):
+...
+    def __delitem__(self, name):
+...
+    def isinstance(self, cls):
+...
+    def not_isinstance(self, cls):
+...
+
+class TableAttribute(MetaAttribute):
+    pass
+
+
+class PprintIncludeExclude(TableAttribute):
+
+    def __get__(self, instance, owner_cls):
+...
+    def __set__(self, instance, names):
+...
+    def __call__(self):
+...
+    def __repr__(self):
+...
+    def _add_remove_setup(self, names):
+...
+    def add(self, names):
+...
+    def remove(self, names):
+...
+    def _remove(self, names, raise_exc=False):
+...
+    def _rename(self, name, new_name):
+...
+    def set(self, names):
+...
+
+class Table:
+
+    meta = MetaData(copy=False)
+
+    # Define class attributes for core container objects to allow for subclass
+    # customization.
+    Row = Row
+    Column = Column
+    MaskedColumn = MaskedColumn
+    TableColumns = TableColumns
+    TableFormatter = TableFormatter
+
+    # Unified I/O read and write methods from .connect
+    read = UnifiedReadWriteMethod(TableRead)
+    write = UnifiedReadWriteMethod(TableWrite)
+
+    pprint_exclude_names = PprintIncludeExclude()
+    pprint_include_names = PprintIncludeExclude()
+
+    def as_array(self, keep_byteorder=False, names=None):
+...
+    def __init__(
+        self,
+        data=None,
+        masked=False,
+        names=None,
+        dtype=None,
+        meta=None,
+        copy=True,
+        rows=None,
+        copy_indices=True,
+        units=None,
+        descriptions=None,
+        **kwargs,
+    ):
+...
+    def _set_column_attribute(self, attr, values):
+...
+    def __getstate__(self):
+...
+    def __setstate__(self, state):
+...
+    @property
+    def mask(self):
+...
+    @mask.setter
+    def mask(self, val):
+...
+    @property
+    def _mask(self):
+...
+    def filled(self, fill_value=None):
+...
+    @property
+    def indices(self):
+...
+    @property
+    def loc(self):
+...
+    @property
+    def loc_indices(self):
+...
+    @property
+    def iloc(self):
+...
+    def add_index(self, colnames, engine=None, unique=False):
+...
+    def remove_indices(self, colname):
+...
+    def index_mode(self, mode):
+...
+    def __array__(self, dtype=None):
+...
+    def _check_names_dtype(self, names, dtype, n_cols):
+...
+    def _init_from_list_of_dicts(self, data, names, dtype, n_cols, copy):
+...
+    def _init_from_list(self, data, names, dtype, n_cols, copy):
+...
+    def _convert_data_to_col(
+        self, data, copy=True, default_name=None, dtype=None, name=None
+    ):
+...
+    def _init_from_ndarray(self, data, names, dtype, n_cols, copy):
+...
+    def _init_from_dict(self, data, names, dtype, n_cols, copy):
+...
+    def _get_col_cls_for_table(self, col):
+...
+    def _convert_col_for_table(self, col):
+...
+    def _init_from_cols(self, cols):
+...
+    def _new_from_slice(self, slice_):
+...
+    @staticmethod
+    def _make_table_from_cols(table, cols, verify=True, names=None):
+...
+    def _set_col_parent_table_and_mask(self, col):
+...
+    def itercols(self):
+...
+    def _base_repr_(
+        self,
+        html=False,
+        descr_vals=None,
+        max_width=None,
+        tableid=None,
+        show_dtype=True,
+        max_lines=None,
+        tableclass=None,
+    ):
+...
+    def _repr_html_(self):
+...
+    def __repr__(self):
+...
+    def __str__(self):
+...
+    def __bytes__(self):
+...
+    @property
+    def has_mixin_columns(self):
+...
+    @property
+    def has_masked_columns(self):
+...
+    @property
+    def has_masked_values(self):
+...
+    def _is_mixin_for_table(self, col):
+...
+    @format_doc(_pprint_docs)
+    def pprint(
+        self,
+        max_lines=None,
+        max_width=None,
+        show_name=True,
+        show_unit=None,
+        show_dtype=False,
+        align=None,
+    ):
+...
+    @format_doc(_pprint_docs)
+    def pprint_all(
+        self,
+        max_lines=-1,
+        max_width=-1,
+        show_name=True,
+        show_unit=None,
+        show_dtype=False,
+        align=None,
+    ):
+...
+    def _make_index_row_display_table(self, index_row_name):
+...
+    def show_in_notebook(
+        self,
+        tableid=None,
+        css=None,
+        display_length=50,
+        table_class="astropy-default",
+        show_row_index="idx",
+    ):
+...
+    def show_in_browser(
+        self,
+        max_lines=5000,
+        jsviewer=False,
+        browser="default",
+        jskwargs={"use_local_files": True},
+        tableid=None,
+        table_class="display compact",
+        css=None,
+        show_row_index="idx",
+    ):
+...
+    @format_doc(_pformat_docs, id="{id}")
+    def pformat(
+        self,
+        max_lines=None,
+        max_width=None,
+        show_name=True,
+        show_unit=None,
+        show_dtype=False,
+        html=False,
+        tableid=None,
+        align=None,
+        tableclass=None,
+    ):
+...
+    @format_doc(_pformat_docs, id="{id}")
+    def pformat_all(
+        self,
+        max_lines=-1,
+        max_width=-1,
+        show_name=True,
+        show_unit=None,
+        show_dtype=False,
+        html=False,
+        tableid=None,
+        align=None,
+        tableclass=None,
+    ):
+...
+    def more(
+        self,
+        max_lines=None,
+        max_width=None,
+        show_name=True,
+        show_unit=None,
+        show_dtype=False,
+    ):
+...
+    def __getitem__(self, item):
+...
+    def __setitem__(self, item, value):
+...
+    def __delitem__(self, item):
+...
+    def _ipython_key_completions_(self):
+...
+    def field(self, item):
+...
+    @property
+    def masked(self):
+...
+    @masked.setter
+    def masked(self, masked):
+...
+    def _set_masked(self, masked):
+...
+    @property
+    def ColumnClass(self):
+...
+    @property
+    def dtype(self):
+...
+    @property
+    def colnames(self):
+...
+    @staticmethod
+    def _is_list_or_tuple_of_str(names):
+...
+    def keys(self):
+...
+    def values(self):
+...
+    def items(self):
+...
+    def __len__(self):
+...
+    def __or__(self, other):
+...
+    def __ior__(self, other):
+...
+    def index_column(self, name):
+...
+    def add_column(
+        self,
+        col,
+        index=None,
+        name=None,
+        rename_duplicate=False,
+        copy=True,
+        default_name=None,
+    ):
+...
+    def add_columns(
+        self, cols, indexes=None, names=None, copy=True, rename_duplicate=False
+    ):
+...
+    def _replace_column_warnings(self, name, col):
+...
+    def replace_column(self, name, col, copy=True):
+...
+    def remove_row(self, index):
+...
+    def remove_rows(self, row_specifier):
+...
+    def iterrows(self, *names):
+...
+    def _set_of_names_in_colnames(self, names):
+...
+    def remove_column(self, name):
+...
+    def remove_columns(self, names):
+...
+    def _convert_string_dtype(self, in_kind, out_kind, encode_decode_func):
+...
+    def convert_bytestring_to_unicode(self):
+...
+    def convert_unicode_to_bytestring(self):
+...
+    def keep_columns(self, names):
+...
+    def rename_column(self, name, new_name):
+...
+    def rename_columns(self, names, new_names):
+...
+    def _set_row(self, idx, colnames, vals):
+...
+    def add_row(self, vals=None, mask=None):
+...
+    def insert_row(self, index, vals=None, mask=None):
+...
+    def _replace_cols(self, columns):
+...
+    def update(self, other, copy=True):
+...
+    def argsort(self, keys=None, kind=None, reverse=False):
+...
+    def sort(self, keys=None, *, kind=None, reverse=False):
+...
+    def reverse(self):
+...
+    def round(self, decimals=0):
+...
+    def copy(self, copy_data=True):
+...
+    def __deepcopy__(self, memo=None):
+...
+    def __copy__(self):
+...
+    def __lt__(self, other):
+...
+    def __gt__(self, other):
+...
+    def __le__(self, other):
+...
+    def __ge__(self, other):
+...
+    def __eq__(self, other):
+...
+    def __ne__(self, other):
+...
+    def _rows_equal(self, other):
+...
+    def values_equal(self, other):
+...
+    @property
+    def groups(self):
+...
+    def group_by(self, keys):
+...
+    def to_pandas(self, index=None, use_nullable_int=True):
+...
+    @classmethod
+    def from_pandas(cls, dataframe, index=False, units=None):
+...
+    info = TableInfo()
+
+
+class QTable(Table):
+
+    def _is_mixin_for_table(self, col):
+...
+    def _convert_col_for_table(self, col):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+5
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Issue when passing empty lists/arrays to WCS transformations
+The following should not fail but instead should return empty lists/arrays:
+
+```
+In [1]: from astropy.wcs import WCS
+
+In [2]: wcs = WCS('2MASS_h.fits')
+
+In [3]: wcs.wcs_pix2world([], [], 0)
+---------------------------------------------------------------------------
+InconsistentAxisTypesError                Traceback (most recent call last)
+<ipython-input-3-e2cc0e97941a> in <module>()
+----> 1 wcs.wcs_pix2world([], [], 0)
+
+~/Dropbox/Code/Astropy/astropy/astropy/wcs/wcs.py in wcs_pix2world(self, *args, **kwargs)
+   1352         return self._array_converter(
+   1353             lambda xy, o: self.wcs.p2s(xy, o)['world'],
+-> 1354             'output', *args, **kwargs)
+   1355     wcs_pix2world.__doc__ = """
+   1356         Transforms pixel coordinates to world coordinates by doing
+
+~/Dropbox/Code/Astropy/astropy/astropy/wcs/wcs.py in _array_converter(self, func, sky, ra_dec_order, *args)
+   1267                     "a 1-D array for each axis, followed by an origin.")
+   1268 
+-> 1269             return _return_list_of_arrays(axes, origin)
+   1270 
+   1271         raise TypeError(
+
+~/Dropbox/Code/Astropy/astropy/astropy/wcs/wcs.py in _return_list_of_arrays(axes, origin)
+   1223             if ra_dec_order and sky == 'input':
+   1224                 xy = self._denormalize_sky(xy)
+-> 1225             output = func(xy, origin)
+   1226             if ra_dec_order and sky == 'output':
+   1227                 output = self._normalize_sky(output)
+
+~/Dropbox/Code/Astropy/astropy/astropy/wcs/wcs.py in <lambda>(xy, o)
+   1351             raise ValueError("No basic WCS settings were created.")
+   1352         return self._array_converter(
+-> 1353             lambda xy, o: self.wcs.p2s(xy, o)['world'],
+   1354             'output', *args, **kwargs)
+   1355     wcs_pix2world.__doc__ = """
+
+InconsistentAxisTypesError: ERROR 4 in wcsp2s() at line 2646 of file cextern/wcslib/C/wcs.c:
+ncoord and/or nelem inconsistent with the wcsprm.
+```
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: astropy/wcs/wcs.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+
+__all__ = ['FITSFixedWarning', 'WCS', 'find_all_wcs',
+           'DistortionLookupTable', 'Sip', 'Tabprm', 'Wcsprm',
+           'WCSBase', 'validate', 'WcsError', 'SingularMatrixError',
+           'InconsistentAxisTypesError', 'InvalidTransformError',
+           'InvalidCoordinateError', 'NoSolutionError',
+           'InvalidSubimageSpecificationError', 'NoConvergence',
+           'NonseparableSubimageCoordinateSystemError',
+           'NoWcsKeywordsFoundError', 'InvalidTabularParametersError']
+
+
+__doctest_skip__ = ['WCS.all_world2pix']
+
+
+# Additional relax bit flags
+WCSHDO_SIP = 0x80000
+
+# Regular expression defining SIP keyword It matches keyword that starts with A
+# or B, optionally followed by P, followed by an underscore then a number in
+# range of 0-19, followed by an underscore and another number in range of 0-19.
+# Keyword optionally ends with a capital letter.
+SIP_KW = re.compile('''^[AB]P?_1?[0-9]_1?[0-9][A-Z]?$''')
+
+
+def _parse_keysel(keysel):
+...
+
+class NoConvergence(Exception):
+
+    def __init__(self, *args, best_solution=None, accuracy=None, niter=None,
+                 divergent=None, slow_conv=None, **kwargs):
+...
+
+class FITSFixedWarning(AstropyWarning):
+    pass
+
+
+class WCS(WCSBase):
+
+    def __init__(self, header=None, fobj=None, key=' ', minerr=0.0,
+                 relax=True, naxis=None, keysel=None, colsel=None,
+                 fix=True, translate_units='', _do_set=True):
+...
+    def __copy__(self):
+...
+    def __deepcopy__(self, memo):
+...
+    def copy(self):
+...
+    def deepcopy(self):
+...
+    def sub(self, axes=None):
+...
+    if _wcs is not None:
+        sub.__doc__ = _wcs.Wcsprm.sub.__doc__
+
+    def _fix_scamp(self):
+...
+    def fix(self, translate_units='', naxis=None):
+...
+    def calc_footprint(self, header=None, undistort=True, axes=None, center=True):
+...
+    def _read_det2im_kw(self, header, fobj, err=0.0):
+...
+    def _read_d2im_old_format(self, header, fobj, axiscorr):
+...
+    def _write_det2im(self, hdulist):
+...
+    def _read_distortion_kw(self, header, fobj, dist='CPDIS', err=0.0):
+...
+    def _write_distortion_kw(self, hdulist, dist='CPDIS'):
+...
+    def _remove_sip_kw(self, header):
+...
+    def _read_sip_kw(self, header, wcskey=""):
+...
+    def _write_sip_kw(self):
+...
+    def _denormalize_sky(self, sky):
+...
+    def _normalize_sky(self, sky):
+...
+    def _array_converter(self, func, sky, *args, ra_dec_order=False):
+...
+    def all_pix2world(self, *args, **kwargs):
+...
+    all_pix2world.__doc__ = """
+        Transforms pixel coordinates to world coordinates.
+
+        Performs all of the following in series:
+
+            - Detector to image plane correction (if present in the
+              FITS file)
+
+            - `SIP`_ distortion correction (if present in the FITS
+              file)
+
+            - `distortion paper`_ table-lookup correction (if present
+              in the FITS file)
+
+            - `wcslib`_ "core" WCS transformation
+
+        Parameters
+        ----------
+        {0}
+
+            For a transformation that is not two-dimensional, the
+            two-argument form must be used.
+
+        {1}
+
+        Returns
+        -------
+
+        {2}
+
+        Notes
+        -----
+        The order of the axes for the result is determined by the
+        ``CTYPEia`` keywords in the FITS header, therefore it may not
+        always be of the form (*ra*, *dec*).  The
+        `~astropy.wcs.Wcsprm.lat`, `~astropy.wcs.Wcsprm.lng`,
+        `~astropy.wcs.Wcsprm.lattyp` and `~astropy.wcs.Wcsprm.lngtyp`
+        members can be used to determine the order of the axes.
+
+        Raises
+        ------
+        MemoryError
+            Memory allocation failed.
+
+        SingularMatrixError
+            Linear transformation matrix is singular.
+
+        InconsistentAxisTypesError
+            Inconsistent or unrecognized coordinate axis types.
+
+        ValueError
+            Invalid parameter value.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+
+        ValueError
+            x- and y-coordinate arrays are not the same size.
+
+        InvalidTransformError
+            Invalid coordinate transformation parameters.
+
+        InvalidTransformError
+            Ill-conditioned coordinate transformation parameters.
+        """.format(__.TWO_OR_MORE_ARGS('naxis', 8),
+                   __.RA_DEC_ORDER(8),
+                   __.RETURNS('sky coordinates, in degrees', 8))
+
+    def wcs_pix2world(self, *args, **kwargs):
+...
+    wcs_pix2world.__doc__ = """
+        Transforms pixel coordinates to world coordinates by doing
+        only the basic `wcslib`_ transformation.
+
+        No `SIP`_ or `distortion paper`_ table lookup correction is
+        applied.  To perform distortion correction, see
+        `~astropy.wcs.WCS.all_pix2world`,
+        `~astropy.wcs.WCS.sip_pix2foc`, `~astropy.wcs.WCS.p4_pix2foc`,
+        or `~astropy.wcs.WCS.pix2foc`.
+
+        Parameters
+        ----------
+        {0}
+
+            For a transformation that is not two-dimensional, the
+            two-argument form must be used.
+
+        {1}
+
+        Returns
+        -------
+
+        {2}
+
+        Raises
+        ------
+        MemoryError
+            Memory allocation failed.
+
+        SingularMatrixError
+            Linear transformation matrix is singular.
+
+        InconsistentAxisTypesError
+            Inconsistent or unrecognized coordinate axis types.
+
+        ValueError
+            Invalid parameter value.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+
+        ValueError
+            x- and y-coordinate arrays are not the same size.
+
+        InvalidTransformError
+            Invalid coordinate transformation parameters.
+
+        InvalidTransformError
+            Ill-conditioned coordinate transformation parameters.
+
+        Notes
+        -----
+        The order of the axes for the result is determined by the
+        ``CTYPEia`` keywords in the FITS header, therefore it may not
+        always be of the form (*ra*, *dec*).  The
+        `~astropy.wcs.Wcsprm.lat`, `~astropy.wcs.Wcsprm.lng`,
+        `~astropy.wcs.Wcsprm.lattyp` and `~astropy.wcs.Wcsprm.lngtyp`
+        members can be used to determine the order of the axes.
+
+        """.format(__.TWO_OR_MORE_ARGS('naxis', 8),
+                   __.RA_DEC_ORDER(8),
+                   __.RETURNS('world coordinates, in degrees', 8))
+
+    def _all_world2pix(self, world, origin, tolerance, maxiter, adaptive,
+                       detect_divergence, quiet):
+...
+    def all_world2pix(self, *args, tolerance=1e-4, maxiter=20, adaptive=False,
+                      detect_divergence=True, quiet=False, **kwargs):
+...
+    all_world2pix.__doc__ = """
+        all_world2pix(*arg, accuracy=1.0e-4, maxiter=20,
+        adaptive=False, detect_divergence=True, quiet=False)
+
+        Transforms world coordinates to pixel coordinates, using
+        numerical iteration to invert the full forward transformation
+        `~astropy.wcs.WCS.all_pix2world` with complete
+        distortion model.
+
+
+        Parameters
+        ----------
+        {0}
+
+            For a transformation that is not two-dimensional, the
+            two-argument form must be used.
+
+        {1}
+
+        tolerance : float, optional (Default = 1.0e-4)
+            Tolerance of solution. Iteration terminates when the
+            iterative solver estimates that the "true solution" is
+            within this many pixels current estimate, more
+            specifically, when the correction to the solution found
+            during the previous iteration is smaller
+            (in the sense of the L2 norm) than ``tolerance``.
+
+        maxiter : int, optional (Default = 20)
+            Maximum number of iterations allowed to reach a solution.
+
+        quiet : bool, optional (Default = False)
+            Do not throw :py:class:`NoConvergence` exceptions when
+            the method does not converge to a solution with the
+            required accuracy within a specified number of maximum
+            iterations set by ``maxiter`` parameter. Instead,
+            simply return the found solution.
+
+        Other Parameters
+        ----------------
+        adaptive : bool, optional (Default = False)
+            Specifies whether to adaptively select only points that
+            did not converge to a solution within the required
+            accuracy for the next iteration. Default is recommended
+            for HST as well as most other instruments.
+
+            .. note::
+               The :py:meth:`all_world2pix` uses a vectorized
+               implementation of the method of consecutive
+               approximations (see ``Notes`` section below) in which it
+               iterates over *all* input points *regardless* until
+               the required accuracy has been reached for *all* input
+               points. In some cases it may be possible that
+               *almost all* points have reached the required accuracy
+               but there are only a few of input data points for
+               which additional iterations may be needed (this
+               depends mostly on the characteristics of the geometric
+               distortions for a given instrument). In this situation
+               it may be advantageous to set ``adaptive`` = `True` in
+               which case :py:meth:`all_world2pix` will continue
+               iterating *only* over the points that have not yet
+               converged to the required accuracy. However, for the
+               HST's ACS/WFC detector, which has the strongest
+               distortions of all HST instruments, testing has
+               shown that enabling this option would lead to a about
+               50-100% penalty in computational time (depending on
+               specifics of the image, geometric distortions, and
+               number of input points to be converted). Therefore,
+               for HST and possibly instruments, it is recommended
+               to set ``adaptive`` = `False`. The only danger in
+               getting this setting wrong will be a performance
+               penalty.
+
+            .. note::
+               When ``detect_divergence`` is `True`,
+               :py:meth:`all_world2pix` will automatically switch
+               to the adaptive algorithm once divergence has been
+               detected.
+
+        detect_divergence : bool, optional (Default = True)
+            Specifies whether to perform a more detailed analysis
+            of the convergence to a solution. Normally
+            :py:meth:`all_world2pix` may not achieve the required
+            accuracy if either the ``tolerance`` or ``maxiter`` arguments
+            are too low. However, it may happen that for some
+            geometric distortions the conditions of convergence for
+            the the method of consecutive approximations used by
+            :py:meth:`all_world2pix` may not be satisfied, in which
+            case consecutive approximations to the solution will
+            diverge regardless of the ``tolerance`` or ``maxiter``
+            settings.
+
+            When ``detect_divergence`` is `False`, these divergent
+            points will be detected as not having achieved the
+            required accuracy (without further details). In addition,
+            if ``adaptive`` is `False` then the algorithm will not
+            know that the solution (for specific points) is diverging
+            and will continue iterating and trying to "improve"
+            diverging solutions. This may result in ``NaN`` or
+            ``Inf`` values in the return results (in addition to a
+            performance penalties). Even when ``detect_divergence``
+            is `False`, :py:meth:`all_world2pix`, at the end of the
+            iterative process, will identify invalid results
+            (``NaN`` or ``Inf``) as "diverging" solutions and will
+            raise :py:class:`NoConvergence` unless the ``quiet``
+            parameter is set to `True`.
+
+            When ``detect_divergence`` is `True`,
+            :py:meth:`all_world2pix` will detect points for which
+            current correction to the coordinates is larger than
+            the correction applied during the previous iteration
+            **if** the requested accuracy **has not yet been
+            achieved**. In this case, if ``adaptive`` is `True`,
+            these points will be excluded from further iterations and
+            if ``adaptive`` is `False`, :py:meth:`all_world2pix` will
+            automatically switch to the adaptive algorithm. Thus, the
+            reported divergent solution will be the latest converging
+            solution computed immediately *before* divergence
+            has been detected.
+
+            .. note::
+               When accuracy has been achieved, small increases in
+               current corrections may be possible due to rounding
+               errors (when ``adaptive`` is `False`) and such
+               increases will be ignored.
+
+            .. note::
+               Based on our testing using HST ACS/WFC images, setting
+               ``detect_divergence`` to `True` will incur about 5-20%
+               performance penalty with the larger penalty
+               corresponding to ``adaptive`` set to `True`.
+               Because the benefits of enabling this
+               feature outweigh the small performance penalty,
+               especially when ``adaptive`` = `False`, it is
+               recommended to set ``detect_divergence`` to `True`,
+               unless extensive testing of the distortion models for
+               images from specific instruments show a good stability
+               of the numerical method for a wide range of
+               coordinates (even outside the image itself).
+
+            .. note::
+               Indices of the diverging inverse solutions will be
+               reported in the ``divergent`` attribute of the
+               raised :py:class:`NoConvergence` exception object.
+
+        Returns
+        -------
+
+        {2}
+
+        Notes
+        -----
+        The order of the axes for the input world array is determined by
+        the ``CTYPEia`` keywords in the FITS header, therefore it may
+        not always be of the form (*ra*, *dec*).  The
+        `~astropy.wcs.Wcsprm.lat`, `~astropy.wcs.Wcsprm.lng`,
+        `~astropy.wcs.Wcsprm.lattyp`, and
+        `~astropy.wcs.Wcsprm.lngtyp`
+        members can be used to determine the order of the axes.
+
+        Using the method of fixed-point iterations approximations we
+        iterate starting with the initial approximation, which is
+        computed using the non-distortion-aware
+        :py:meth:`wcs_world2pix` (or equivalent).
+
+        The :py:meth:`all_world2pix` function uses a vectorized
+        implementation of the method of consecutive approximations and
+        therefore it is highly efficient (>30x) when *all* data points
+        that need to be converted from sky coordinates to image
+        coordinates are passed at *once*. Therefore, it is advisable,
+        whenever possible, to pass as input a long array of all points
+        that need to be converted to :py:meth:`all_world2pix` instead
+        of calling :py:meth:`all_world2pix` for each data point. Also
+        see the note to the ``adaptive`` parameter.
+
+        Raises
+        ------
+        NoConvergence
+            The method did not converge to a
+            solution to the required accuracy within a specified
+            number of maximum iterations set by the ``maxiter``
+            parameter. To turn off this exception, set ``quiet`` to
+            `True`. Indices of the points for which the requested
+            accuracy was not achieved (if any) will be listed in the
+            ``slow_conv`` attribute of the
+            raised :py:class:`NoConvergence` exception object.
+
+            See :py:class:`NoConvergence` documentation for
+            more details.
+
+        MemoryError
+            Memory allocation failed.
+
+        SingularMatrixError
+            Linear transformation matrix is singular.
+
+        InconsistentAxisTypesError
+            Inconsistent or unrecognized coordinate axis types.
+
+        ValueError
+            Invalid parameter value.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+
+        ValueError
+            x- and y-coordinate arrays are not the same size.
+
+        InvalidTransformError
+            Invalid coordinate transformation parameters.
+
+        InvalidTransformError
+            Ill-conditioned coordinate transformation parameters.
+
+        Examples
+        --------
+        >>> import astropy.io.fits as fits
+        >>> import astropy.wcs as wcs
+        >>> import numpy as np
+        >>> import os
+
+        >>> filename = os.path.join(wcs.__path__[0], 'tests/data/j94f05bgq_flt.fits')
+        >>> hdulist = fits.open(filename)
+        >>> w = wcs.WCS(hdulist[('sci',1)].header, hdulist)
+        >>> hdulist.close()
+
+        >>> ra, dec = w.all_pix2world([1,2,3], [1,1,1], 1)
+        >>> print(ra)  # doctest: +FLOAT_CMP
+        [ 5.52645627  5.52649663  5.52653698]
+        >>> print(dec)  # doctest: +FLOAT_CMP
+        [-72.05171757 -72.05171276 -72.05170795]
+        >>> radec = w.all_pix2world([[1,1], [2,1], [3,1]], 1)
+        >>> print(radec)  # doctest: +FLOAT_CMP
+        [[  5.52645627 -72.05171757]
+         [  5.52649663 -72.05171276]
+         [  5.52653698 -72.05170795]]
+        >>> x, y = w.all_world2pix(ra, dec, 1)
+        >>> print(x)  # doctest: +FLOAT_CMP
+        [ 1.00000238  2.00000237  3.00000236]
+        >>> print(y)  # doctest: +FLOAT_CMP
+        [ 0.99999996  0.99999997  0.99999997]
+        >>> xy = w.all_world2pix(radec, 1)
+        >>> print(xy)  # doctest: +FLOAT_CMP
+        [[ 1.00000238  0.99999996]
+         [ 2.00000237  0.99999997]
+         [ 3.00000236  0.99999997]]
+        >>> xy = w.all_world2pix(radec, 1, maxiter=3,
+        ...                      tolerance=1.0e-10, quiet=False)
+        Traceback (most recent call last):
+        ...
+        NoConvergence: 'WCS.all_world2pix' failed to converge to the
+        requested accuracy. After 3 iterations, the solution is
+        diverging at least for one input point.
+
+        >>> # Now try to use some diverging data:
+        >>> divradec = w.all_pix2world([[1.0, 1.0],
+        ...                             [10000.0, 50000.0],
+        ...                             [3.0, 1.0]], 1)
+        >>> print(divradec)  # doctest: +FLOAT_CMP
+        [[  5.52645627 -72.05171757]
+         [  7.15976932 -70.8140779 ]
+         [  5.52653698 -72.05170795]]
+
+        >>> # First, turn detect_divergence on:
+        >>> try:  # doctest: +FLOAT_CMP
+        ...   xy = w.all_world2pix(divradec, 1, maxiter=20,
+        ...                        tolerance=1.0e-4, adaptive=False,
+        ...                        detect_divergence=True,
+        ...                        quiet=False)
+        ... except wcs.wcs.NoConvergence as e:
+        ...   print("Indices of diverging points: {{0}}"
+        ...         .format(e.divergent))
+        ...   print("Indices of poorly converging points: {{0}}"
+        ...         .format(e.slow_conv))
+        ...   print("Best solution:\\n{{0}}".format(e.best_solution))
+        ...   print("Achieved accuracy:\\n{{0}}".format(e.accuracy))
+        Indices of diverging points: [1]
+        Indices of poorly converging points: None
+        Best solution:
+        [[  1.00000238e+00   9.99999965e-01]
+         [ -1.99441636e+06   1.44309097e+06]
+         [  3.00000236e+00   9.99999966e-01]]
+        Achieved accuracy:
+        [[  6.13968380e-05   8.59638593e-07]
+         [  8.59526812e+11   6.61713548e+11]
+         [  6.09398446e-05   8.38759724e-07]]
+        >>> raise e
+        Traceback (most recent call last):
+        ...
+        NoConvergence: 'WCS.all_world2pix' failed to converge to the
+        requested accuracy.  After 5 iterations, the solution is
+        diverging at least for one input point.
+
+        >>> # This time turn detect_divergence off:
+        >>> try:  # doctest: +FLOAT_CMP
+        ...   xy = w.all_world2pix(divradec, 1, maxiter=20,
+        ...                        tolerance=1.0e-4, adaptive=False,
+        ...                        detect_divergence=False,
+        ...                        quiet=False)
+        ... except wcs.wcs.NoConvergence as e:
+        ...   print("Indices of diverging points: {{0}}"
+        ...         .format(e.divergent))
+        ...   print("Indices of poorly converging points: {{0}}"
+        ...         .format(e.slow_conv))
+        ...   print("Best solution:\\n{{0}}".format(e.best_solution))
+        ...   print("Achieved accuracy:\\n{{0}}".format(e.accuracy))
+        Indices of diverging points: [1]
+        Indices of poorly converging points: None
+        Best solution:
+        [[ 1.00000009  1.        ]
+         [        nan         nan]
+         [ 3.00000009  1.        ]]
+        Achieved accuracy:
+        [[  2.29417358e-06   3.21222995e-08]
+         [             nan              nan]
+         [  2.27407877e-06   3.13005639e-08]]
+        >>> raise e
+        Traceback (most recent call last):
+        ...
+        NoConvergence: 'WCS.all_world2pix' failed to converge to the
+        requested accuracy.  After 6 iterations, the solution is
+        diverging at least for one input point.
+
+        """.format(__.TWO_OR_MORE_ARGS('naxis', 8),
+                   __.RA_DEC_ORDER(8),
+                   __.RETURNS('pixel coordinates', 8))
+
+    def wcs_world2pix(self, *args, **kwargs):
+...
+    wcs_world2pix.__doc__ = """
+        Transforms world coordinates to pixel coordinates, using only
+        the basic `wcslib`_ WCS transformation.  No `SIP`_ or
+        `distortion paper`_ table lookup transformation is applied.
+
+        Parameters
+        ----------
+        {0}
+
+            For a transformation that is not two-dimensional, the
+            two-argument form must be used.
+
+        {1}
+
+        Returns
+        -------
+
+        {2}
+
+        Notes
+        -----
+        The order of the axes for the input world array is determined by
+        the ``CTYPEia`` keywords in the FITS header, therefore it may
+        not always be of the form (*ra*, *dec*).  The
+        `~astropy.wcs.Wcsprm.lat`, `~astropy.wcs.Wcsprm.lng`,
+        `~astropy.wcs.Wcsprm.lattyp` and `~astropy.wcs.Wcsprm.lngtyp`
+        members can be used to determine the order of the axes.
+
+        Raises
+        ------
+        MemoryError
+            Memory allocation failed.
+
+        SingularMatrixError
+            Linear transformation matrix is singular.
+
+        InconsistentAxisTypesError
+            Inconsistent or unrecognized coordinate axis types.
+
+        ValueError
+            Invalid parameter value.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+
+        ValueError
+            x- and y-coordinate arrays are not the same size.
+
+        InvalidTransformError
+            Invalid coordinate transformation parameters.
+
+        InvalidTransformError
+            Ill-conditioned coordinate transformation parameters.
+        """.format(__.TWO_OR_MORE_ARGS('naxis', 8),
+                   __.RA_DEC_ORDER(8),
+                   __.RETURNS('pixel coordinates', 8))
+
+    def pix2foc(self, *args):
+...
+    pix2foc.__doc__ = """
+        Convert pixel coordinates to focal plane coordinates using the
+        `SIP`_ polynomial distortion convention and `distortion
+        paper`_ table-lookup correction.
+
+        The output is in absolute pixel coordinates, not relative to
+        ``CRPIX``.
+
+        Parameters
+        ----------
+
+        {0}
+
+        Returns
+        -------
+
+        {1}
+
+        Raises
+        ------
+        MemoryError
+            Memory allocation failed.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+        """.format(__.TWO_OR_MORE_ARGS('2', 8),
+                   __.RETURNS('focal coordinates', 8))
+
+    def p4_pix2foc(self, *args):
+...
+    p4_pix2foc.__doc__ = """
+        Convert pixel coordinates to focal plane coordinates using
+        `distortion paper`_ table-lookup correction.
+
+        The output is in absolute pixel coordinates, not relative to
+        ``CRPIX``.
+
+        Parameters
+        ----------
+
+        {0}
+
+        Returns
+        -------
+
+        {1}
+
+        Raises
+        ------
+        MemoryError
+            Memory allocation failed.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+        """.format(__.TWO_OR_MORE_ARGS('2', 8),
+                   __.RETURNS('focal coordinates', 8))
+
+    def det2im(self, *args):
+...
+    det2im.__doc__ = """
+        Convert detector coordinates to image plane coordinates using
+        `distortion paper`_ table-lookup correction.
+
+        The output is in absolute pixel coordinates, not relative to
+        ``CRPIX``.
+
+        Parameters
+        ----------
+
+        {0}
+
+        Returns
+        -------
+
+        {1}
+
+        Raises
+        ------
+        MemoryError
+            Memory allocation failed.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+        """.format(__.TWO_OR_MORE_ARGS('2', 8),
+                   __.RETURNS('pixel coordinates', 8))
+
+    def sip_pix2foc(self, *args):
+...
+    sip_pix2foc.__doc__ = """
+        Convert pixel coordinates to focal plane coordinates using the
+        `SIP`_ polynomial distortion convention.
+
+        The output is in pixel coordinates, relative to ``CRPIX``.
+
+        FITS WCS `distortion paper`_ table lookup correction is not
+        applied, even if that information existed in the FITS file
+        that initialized this :class:`~astropy.wcs.WCS` object.  To
+        correct for that, use `~astropy.wcs.WCS.pix2foc` or
+        `~astropy.wcs.WCS.p4_pix2foc`.
+
+        Parameters
+        ----------
+
+        {0}
+
+        Returns
+        -------
+
+        {1}
+
+        Raises
+        ------
+        MemoryError
+            Memory allocation failed.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+        """.format(__.TWO_OR_MORE_ARGS('2', 8),
+                   __.RETURNS('focal coordinates', 8))
+
+    def sip_foc2pix(self, *args):
+...
+    sip_foc2pix.__doc__ = """
+        Convert focal plane coordinates to pixel coordinates using the
+        `SIP`_ polynomial distortion convention.
+
+        FITS WCS `distortion paper`_ table lookup distortion
+        correction is not applied, even if that information existed in
+        the FITS file that initialized this `~astropy.wcs.WCS` object.
+
+        Parameters
+        ----------
+
+        {0}
+
+        Returns
+        -------
+
+        {1}
+
+        Raises
+        ------
+        MemoryError
+            Memory allocation failed.
+
+        ValueError
+            Invalid coordinate transformation parameters.
+        """.format(__.TWO_OR_MORE_ARGS('2', 8),
+                   __.RETURNS('pixel coordinates', 8))
+
+    def to_fits(self, relax=False, key=None):
+...
+    def to_header(self, relax=None, key=None):
+...
+    def _fix_ctype(self, header, add_sip=True, log_message=True):
+...
+    def to_header_string(self, relax=None):
+...
+    def footprint_to_file(self, filename='footprint.reg', color='green',
+                          width=2, coordsys=None):
+...
+    @property
+    def _naxis1(self):
+...
+    @_naxis1.setter
+    def _naxis1(self, value):
+...
+    @property
+    def _naxis2(self):
+...
+    @_naxis2.setter
+    def _naxis2(self, value):
+...
+    def _get_naxis(self, header=None):
+...
+    def printwcs(self):
+...
+    def __repr__(self):
+...
+    def get_axis_types(self):
+...
+    def __reduce__(self):
+...
+    def dropaxis(self, dropax):
+...
+    def swapaxes(self, ax0, ax1):
+...
+    def reorient_celestial_first(self):
+...
+    def slice(self, view, numpy_order=True):
+...
+    def __getitem__(self, item):
+...
+    def __iter__(self):
+...
+    @property
+    def axis_type_names(self):
+...
+    @property
+    def celestial(self):
+...
+    @property
+    def is_celestial(self):
+...
+    @property
+    def has_celestial(self):
+...
+    @property
+    def pixel_scale_matrix(self):
+...
+    def _as_mpl_axes(self):
+...
+
+def __WCS_unpickle__(cls, dct, fits_data):
+...
+
+def find_all_wcs(header, relax=True, keysel=None, fix=True,
+                 translate_units='',
+                 _do_set=True):
+...
+
+def validate(source):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+6
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Set default FILE_UPLOAD_PERMISSION to 0o644.
+Description
+	
+Hello,
+As far as I can see, the ​File Uploads documentation page does not mention any permission issues.
+What I would like to see is a warning that in absence of explicitly configured FILE_UPLOAD_PERMISSIONS, the permissions for a file uploaded to FileSystemStorage might not be consistent depending on whether a MemoryUploadedFile or a TemporaryUploadedFile was used for temporary storage of the uploaded data (which, with the default FILE_UPLOAD_HANDLERS, in turn depends on the uploaded data size).
+The tempfile.NamedTemporaryFile + os.rename sequence causes the resulting file permissions to be 0o0600 on some systems (I experience it here on CentOS 7.4.1708 and Python 3.6.5). In all probability, the implementation of Python's built-in tempfile module explicitly sets such permissions for temporary files due to security considerations.
+I found mentions of this issue ​on GitHub, but did not manage to find any existing bug report in Django's bug tracker.
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/core/files/storage.py
+
+__all__ = (
+    'Storage', 'FileSystemStorage', 'DefaultStorage', 'default_storage',
+    'get_storage_class',
+)
+
+
+class Storage:
+
+    # The following methods represent a public interface to private methods.
+    # These shouldn't be overridden by subclasses unless absolutely necessary.
+
+    def open(self, name, mode='rb'):
+...
+    def save(self, name, content, max_length=None):
+...
+    # These methods are part of the public API, with default implementations.
+
+    def get_valid_name(self, name):
+...
+    def get_available_name(self, name, max_length=None):
+...
+    def generate_filename(self, filename):
+...
+    def path(self, name):
+...
+    # The following methods form the public API for storage systems, but with
+    # no default implementations. Subclasses must implement *all* of these.
+
+    def delete(self, name):
+...
+    def exists(self, name):
+...
+    def listdir(self, path):
+...
+    def size(self, name):
+...
+    def url(self, name):
+...
+    def get_accessed_time(self, name):
+...
+    def get_created_time(self, name):
+...
+    def get_modified_time(self, name):
+...
+
+@deconstructible
+class FileSystemStorage(Storage):
+    # The combination of O_CREAT and O_EXCL makes os.open() raise OSError if
+    # the file already exists before it's opened.
+    OS_OPEN_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0)
+
+    def __init__(self, location=None, base_url=None, file_permissions_mode=None,
+                 directory_permissions_mode=None):
+...
+    def _clear_cached_properties(self, setting, **kwargs):
+...
+    def _value_or_setting(self, value, setting):
+...
+    @cached_property
+    def base_location(self):
+...
+    @cached_property
+    def location(self):
+...
+    @cached_property
+    def base_url(self):
+...
+    @cached_property
+    def file_permissions_mode(self):
+...
+    @cached_property
+    def directory_permissions_mode(self):
+...
+    def _open(self, name, mode='rb'):
+...
+    def _save(self, name, content):
+...
+    def delete(self, name):
+...
+    def exists(self, name):
+...
+    def listdir(self, path):
+...
+    def path(self, name):
+...
+    def size(self, name):
+...
+    def url(self, name):
+...
+    def _datetime_from_timestamp(self, ts):
+...
+    def get_accessed_time(self, name):
+...
+    def get_created_time(self, name):
+...
+    def get_modified_time(self, name):
+...
+
+def get_storage_class(import_path=None):
+...
+
+class DefaultStorage(LazyObject):
+    def _setup(self):
+...
+
+default_storage = DefaultStorage()
+
+### PATH: django/core/files/uploadhandler.py
+
+__all__ = [
+    'UploadFileException', 'StopUpload', 'SkipFile', 'FileUploadHandler',
+    'TemporaryFileUploadHandler', 'MemoryFileUploadHandler', 'load_handler',
+    'StopFutureHandlers'
+]
+
+
+class UploadFileException(Exception):
+    pass
+
+
+class StopUpload(UploadFileException):
+    def __init__(self, connection_reset=False):
+...
+    def __str__(self):
+...
+
+class SkipFile(UploadFileException):
+    pass
+
+
+class StopFutureHandlers(UploadFileException):
+    pass
+
+
+class FileUploadHandler:
+    chunk_size = 64 * 2 ** 10  # : The default chunk size is 64 KB.
+
+    def __init__(self, request=None):
+...
+    def handle_raw_input(self, input_data, META, content_length, boundary, encoding=None):
+...
+    def new_file(self, field_name, file_name, content_type, content_length, charset=None, content_type_extra=None):
+...
+    def receive_data_chunk(self, raw_data, start):
+...
+    def file_complete(self, file_size):
+...
+    def upload_complete(self):
+...
+
+class TemporaryFileUploadHandler(FileUploadHandler):
+    def new_file(self, *args, **kwargs):
+...
+    def receive_data_chunk(self, raw_data, start):
+...
+    def file_complete(self, file_size):
+...
+
+class MemoryFileUploadHandler(FileUploadHandler):
+
+    def handle_raw_input(self, input_data, META, content_length, boundary, encoding=None):
+...
+    def new_file(self, *args, **kwargs):
+...
+    def receive_data_chunk(self, raw_data, start):
+...
+    def file_complete(self, file_size):
+...
+
+def load_handler(path, *args, **kwargs):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+7
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Allow FilePathField path to accept a callable.
+Description
+	
+I have a special case where I want to create a model containing the path to some local files on the server/dev machine. Seeing as the place where these files are stored is different on different machines I have the following:
+import os
+from django.conf import settings
+from django.db import models
+class LocalFiles(models.Model):
+	name = models.CharField(max_length=255)
+	file = models.FilePathField(path=os.path.join(settings.LOCAL_FILE_DIR, 'example_dir'))
+Now when running manage.py makemigrations it will resolve the path based on the machine it is being run on. Eg: /home/<username>/server_files/example_dir
+I had to manually change the migration to include the os.path.join() part to not break this when running the migration on production/other machine.
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/db/models/fields/files.py
+
+
+class FieldFile(File):
+    def __init__(self, instance, field, name):
+...
+    def __eq__(self, other):
+...
+    def __hash__(self):
+...
+    # The standard File contains most of the necessary properties, but
+    # FieldFiles can be instantiated without a name, so that needs to
+    # be checked for here.
+
+    def _require_file(self):
+...
+    def _get_file(self):
+...
+    def _set_file(self, file):
+...
+    def _del_file(self):
+...
+    file = property(_get_file, _set_file, _del_file)
+
+    @property
+    def path(self):
+...
+    @property
+    def url(self):
+...
+    @property
+    def size(self):
+...
+    def open(self, mode='rb'):
+...
+    # open() doesn't alter the file's contents, but it does reset the pointer
+    open.alters_data = True
+
+    # In addition to the standard File API, FieldFiles have extra methods
+    # to further manipulate the underlying file, as well as update the
+    # associated model instance.
+
+    def save(self, name, content, save=True):
+...
+    save.alters_data = True
+
+    def delete(self, save=True):
+...
+    delete.alters_data = True
+
+    @property
+    def closed(self):
+...
+    def close(self):
+...
+    def __getstate__(self):
+...
+
+class FileDescriptor:
+    def __init__(self, field):
+...
+    def __get__(self, instance, cls=None):
+...
+    def __set__(self, instance, value):
+...
+
+class FileField(Field):
+
+    # The class to wrap instance attributes in. Accessing the file object off
+    # the instance will always return an instance of attr_class.
+    attr_class = FieldFile
+
+    # The descriptor to use for accessing the attribute off of the class.
+    descriptor_class = FileDescriptor
+
+    description = _("File")
+
+    def __init__(self, verbose_name=None, name=None, upload_to='', storage=None, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_primary_key(self):
+...
+    def _check_upload_to(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def get_prep_value(self, value):
+...
+    def pre_save(self, model_instance, add):
+...
+    def contribute_to_class(self, cls, name, **kwargs):
+...
+    def generate_filename(self, instance, filename):
+...
+    def save_form_data(self, instance, data):
+...
+    def formfield(self, **kwargs):
+...
+
+class ImageFileDescriptor(FileDescriptor):
+    def __set__(self, instance, value):
+...
+
+class ImageFieldFile(ImageFile, FieldFile):
+    def delete(self, save=True):
+...
+
+class ImageField(FileField):
+    attr_class = ImageFieldFile
+    descriptor_class = ImageFileDescriptor
+    description = _("Image")
+
+    def __init__(self, verbose_name=None, name=None, width_field=None, height_field=None, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_image_library_installed(self):
+...
+    def deconstruct(self):
+...
+    def contribute_to_class(self, cls, name, **kwargs):
+...
+    def update_dimension_fields(self, instance, force=False, *args, **kwargs):
+...
+    def formfield(self, **kwargs):
+
+
+### PATH: django/db/models/fields/__init__.py
+
+__all__ = [
+    'AutoField', 'BLANK_CHOICE_DASH', 'BigAutoField', 'BigIntegerField',
+    'BinaryField', 'BooleanField', 'CharField', 'CommaSeparatedIntegerField',
+    'DateField', 'DateTimeField', 'DecimalField', 'DurationField',
+    'EmailField', 'Empty', 'Field', 'FieldDoesNotExist', 'FilePathField',
+    'FloatField', 'GenericIPAddressField', 'IPAddressField', 'IntegerField',
+    'NOT_PROVIDED', 'NullBooleanField', 'PositiveIntegerField',
+    'PositiveSmallIntegerField', 'SlugField', 'SmallIntegerField', 'TextField',
+    'TimeField', 'URLField', 'UUIDField',
+]
+
+
+class Empty:
+    pass
+
+
+class NOT_PROVIDED:
+    pass
+
+
+# The values to use for "blank" in SelectFields. Will be appended to the start
+# of most "choices" lists.
+BLANK_CHOICE_DASH = [("", "---------")]
+
+
+def _load_field(app_label, model_name, field_name):
+...
+
+# A guide to Field parameters:
+#
+#   * name:      The name of the field specified in the model.
+#   * attname:   The attribute to use on the model object. This is the same as
+#                "name", except in the case of ForeignKeys, where "_id" is
+#                appended.
+#   * db_column: The db_column specified in the model (or None).
+#   * column:    The database column for this field. This is the same as
+#                "attname", except if db_column is specified.
+#
+# Code that introspects values, or does other dynamic things, should use
+# attname. For example, this gets the primary key value of object "obj":
+#
+#     getattr(obj, opts.pk.attname)
+
+def _empty(of_cls):
+...
+
+def return_None():
+...
+
+@total_ordering
+class Field(RegisterLookupMixin):
+
+    # Designates whether empty strings fundamentally are allowed at the
+    # database level.
+    empty_strings_allowed = True
+    empty_values = list(validators.EMPTY_VALUES)
+
+    # These track each time a Field instance is created. Used to retain order.
+    # The auto_creation_counter is used for fields that Django implicitly
+    # creates, creation_counter is used for all user-specified fields.
+    creation_counter = 0
+    auto_creation_counter = -1
+    default_validators = []  # Default set of validators
+    default_error_messages = {
+        'invalid_choice': _('Value %(value)r is not a valid choice.'),
+        'null': _('This field cannot be null.'),
+        'blank': _('This field cannot be blank.'),
+        'unique': _('%(model_name)s with this %(field_label)s '
+                    'already exists.'),
+        # Translators: The 'lookup_type' is one of 'date', 'year' or 'month'.
+        # Eg: "Title must be unique for pub_date year"
+        'unique_for_date': _("%(field_label)s must be unique for "
+                             "%(date_field_label)s %(lookup_type)s."),
+    }
+    system_check_deprecated_details = None
+    system_check_removed_details = None
+
+    # Field flags
+    hidden = False
+
+    many_to_many = None
+    many_to_one = None
+    one_to_many = None
+    one_to_one = None
+    related_model = None
+
+    # Generic field type description, usually overridden by subclasses
+    def _description(self):
+...
+    description = property(_description)
+
+    def __init__(self, verbose_name=None, name=None, primary_key=False,
+                 max_length=None, unique=False, blank=False, null=False,
+                 db_index=False, rel=None, default=NOT_PROVIDED, editable=True,
+                 serialize=True, unique_for_date=None, unique_for_month=None,
+                 unique_for_year=None, choices=None, help_text='', db_column=None,
+                 db_tablespace=None, auto_created=False, validators=(),
+                 error_messages=None):
+...
+    def __str__(self):
+...
+    def __repr__(self):
+...
+    def check(self, **kwargs):
+...
+    def _check_field_name(self):
+...
+    def _check_choices(self):
+...
+    def _check_db_index(self):
+...
+    def _check_null_allowed_for_primary_keys(self):
+...
+    def _check_backend_specific_checks(self, **kwargs):
+...
+    def _check_validators(self):
+...
+    def _check_deprecation_details(self):
+...
+    def get_col(self, alias, output_field=None):
+...
+    @cached_property
+    def cached_col(self):
+...
+    def select_format(self, compiler, sql, params):
+...
+    def deconstruct(self):
+...
+    def clone(self):
+...
+    def __eq__(self, other):
+...
+    def __lt__(self, other):
+...
+    def __hash__(self):
+...
+    def __deepcopy__(self, memodict):
+...
+    def __copy__(self):
+...
+    def __reduce__(self):
+...
+    def get_pk_value_on_save(self, instance):
+...
+    def to_python(self, value):
+...
+    @cached_property
+    def validators(self):
+...
+    def run_validators(self, value):
+...
+    def validate(self, value, model_instance):
+...
+    def clean(self, value, model_instance):
+...
+    def db_type_parameters(self, connection):
+...
+    def db_check(self, connection):
+...
+    def db_type(self, connection):
+...
+    def rel_db_type(self, connection):
+...
+    def cast_db_type(self, connection):
+...
+    def db_parameters(self, connection):
+...
+    def db_type_suffix(self, connection):
+...
+    def get_db_converters(self, connection):
+...
+    @property
+    def unique(self):
+...
+    @property
+    def db_tablespace(self):
+...
+    def set_attributes_from_name(self, name):
+...
+    def contribute_to_class(self, cls, name, private_only=False):
+...
+    def get_filter_kwargs_for_object(self, obj):
+...
+    def get_attname(self):
+...
+    def get_attname_column(self):
+...
+    def get_internal_type(self):
+...
+    def pre_save(self, model_instance, add):
+...
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def get_db_prep_save(self, value, connection):
+...
+    def has_default(self):
+...
+    def get_default(self):
+...
+    @cached_property
+    def _get_default(self):
+...
+    def get_choices(self, include_blank=True, blank_choice=BLANK_CHOICE_DASH, limit_choices_to=None, ordering=()):
+...
+    def value_to_string(self, obj):
+...
+    def _get_flatchoices(self):
+...
+    flatchoices = property(_get_flatchoices)
+
+    def save_form_data(self, instance, data):
+...
+    def formfield(self, form_class=None, choices_form_class=None, **kwargs):
+...
+    def value_from_object(self, obj):
+...
+
+class AutoField(Field):
+    description = _("Integer")
+
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be an integer."),
+    }
+
+    def __init__(self, *args, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_primary_key(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def rel_db_type(self, connection):
+...
+    def validate(self, value, model_instance):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def get_prep_value(self, value):
+...
+    def contribute_to_class(self, cls, name, **kwargs):
+...
+    def formfield(self, **kwargs):
+...
+
+class BigAutoField(AutoField):
+    description = _("Big (8 byte) integer")
+
+    def get_internal_type(self):
+...
+    def rel_db_type(self, connection):
+...
+
+class BooleanField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be either True or False."),
+        'invalid_nullable': _("'%(value)s' value must be either True, False, or None."),
+    }
+    description = _("Boolean (Either True or False)")
+
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class CharField(Field):
+    description = _("String (up to %(max_length)s)")
+
+    def __init__(self, *args, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_max_length_attribute(self, **kwargs):
+...
+    def cast_db_type(self, connection):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class CommaSeparatedIntegerField(CharField):
+    default_validators = [validators.validate_comma_separated_integer_list]
+    description = _("Comma-separated integers")
+    system_check_removed_details = {
+        'msg': (
+            'CommaSeparatedIntegerField is removed except for support in '
+            'historical migrations.'
+        ),
+        'hint': (
+            'Use CharField(validators=[validate_comma_separated_integer_list]) '
+            'instead.'
+        ),
+        'id': 'fields.E901',
+    }
+
+
+class DateTimeCheckMixin:
+
+    def check(self, **kwargs):
+...
+    def _check_mutually_exclusive_options(self):
+...
+    def _check_fix_default_value(self):
+...
+
+class DateField(DateTimeCheckMixin, Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value has an invalid date format. It must be "
+                     "in YYYY-MM-DD format."),
+        'invalid_date': _("'%(value)s' value has the correct format (YYYY-MM-DD) "
+                          "but it is an invalid date."),
+    }
+    description = _("Date (without time)")
+
+    def __init__(self, verbose_name=None, name=None, auto_now=False,
+                 auto_now_add=False, **kwargs):
+...
+    def _check_fix_default_value(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def pre_save(self, model_instance, add):
+...
+    def contribute_to_class(self, cls, name, **kwargs):
+...
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def value_to_string(self, obj):
+...
+    def formfield(self, **kwargs):
+...
+
+class DateTimeField(DateField):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value has an invalid format. It must be in "
+                     "YYYY-MM-DD HH:MM[:ss[.uuuuuu]][TZ] format."),
+        'invalid_date': _("'%(value)s' value has the correct format "
+                          "(YYYY-MM-DD) but it is an invalid date."),
+        'invalid_datetime': _("'%(value)s' value has the correct format "
+                              "(YYYY-MM-DD HH:MM[:ss[.uuuuuu]][TZ]) "
+                              "but it is an invalid date/time."),
+    }
+    description = _("Date (with time)")
+
+    # __init__ is inherited from DateField
+
+    def _check_fix_default_value(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def pre_save(self, model_instance, add):
+...
+    # contribute_to_class is inherited from DateField, it registers
+    # get_next_by_FOO and get_prev_by_FOO
+
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def value_to_string(self, obj):
+...
+    def formfield(self, **kwargs):
+...
+
+class DecimalField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be a decimal number."),
+    }
+    description = _("Decimal number")
+
+    def __init__(self, verbose_name=None, name=None, max_digits=None,
+                 decimal_places=None, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_decimal_places(self):
+...
+    def _check_max_digits(self):
+...
+    def _check_decimal_places_and_max_digits(self, **kwargs):
+...
+    @cached_property
+    def validators(self):
+...
+    @cached_property
+    def context(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_db_prep_save(self, value, connection):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class DurationField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value has an invalid format. It must be in "
+                     "[DD] [[HH:]MM:]ss[.uuuuuu] format.")
+    }
+    description = _("Duration")
+
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def get_db_converters(self, connection):
+...
+    def value_to_string(self, obj):
+...
+    def formfield(self, **kwargs):
+...
+
+class EmailField(CharField):
+    default_validators = [validators.validate_email]
+    description = _("Email address")
+
+    def __init__(self, *args, **kwargs):
+...
+    def deconstruct(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class FilePathField(Field):
+    description = _("File path")
+
+    def __init__(self, verbose_name=None, name=None, path='', match=None,
+                 recursive=False, allow_files=True, allow_folders=False, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_allowing_files_or_folders(self, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+    def get_internal_type(self):
+...
+
+class FloatField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be a float."),
+    }
+    description = _("Floating point number")
+
+    def get_prep_value(self, value):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class IntegerField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be an integer."),
+    }
+    description = _("Integer")
+
+    def check(self, **kwargs):
+...
+    def _check_max_length_warning(self):
+...
+    @cached_property
+    def validators(self):
+...
+    def get_prep_value(self, value):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class BigIntegerField(IntegerField):
+    description = _("Big (8 byte) integer")
+    MAX_BIGINT = 9223372036854775807
+
+    def get_internal_type(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class IPAddressField(Field):
+    empty_strings_allowed = False
+    description = _("IPv4 address")
+    system_check_removed_details = {
+        'msg': (
+            'IPAddressField has been removed except for support in '
+            'historical migrations.'
+        ),
+        'hint': 'Use GenericIPAddressField instead.',
+        'id': 'fields.E900',
+    }
+
+    def __init__(self, *args, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_prep_value(self, value):
+...
+    def get_internal_type(self):
+...
+
+class GenericIPAddressField(Field):
+    empty_strings_allowed = False
+    description = _("IP address")
+    default_error_messages = {}
+
+    def __init__(self, verbose_name=None, name=None, protocol='both',
+                 unpack_ipv4=False, *args, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_blank_and_null_values(self, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class NullBooleanField(BooleanField):
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be either None, True or False."),
+        'invalid_nullable': _("'%(value)s' value must be either None, True or False."),
+    }
+    description = _("Boolean (Either True, False or None)")
+
+    def __init__(self, *args, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+
+class PositiveIntegerRelDbTypeMixin:
+
+    def rel_db_type(self, connection):
+...
+
+class PositiveIntegerField(PositiveIntegerRelDbTypeMixin, IntegerField):
+    description = _("Positive integer")
+
+    def get_internal_type(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class PositiveSmallIntegerField(PositiveIntegerRelDbTypeMixin, IntegerField):
+    description = _("Positive small integer")
+
+    def get_internal_type(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class SlugField(CharField):
+    default_validators = [validators.validate_slug]
+    description = _("Slug (up to %(max_length)s)")
+
+    def __init__(self, *args, max_length=50, db_index=True, allow_unicode=False, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class SmallIntegerField(IntegerField):
+    description = _("Small integer")
+
+    def get_internal_type(self):
+...
+
+class TextField(Field):
+    description = _("Text")
+
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class TimeField(DateTimeCheckMixin, Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value has an invalid format. It must be in "
+                     "HH:MM[:ss[.uuuuuu]] format."),
+        'invalid_time': _("'%(value)s' value has the correct format "
+                          "(HH:MM[:ss[.uuuuuu]]) but it is an invalid time."),
+    }
+    description = _("Time")
+
+    def __init__(self, verbose_name=None, name=None, auto_now=False,
+                 auto_now_add=False, **kwargs):
+...
+    def _check_fix_default_value(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def pre_save(self, model_instance, add):
+...
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def value_to_string(self, obj):
+...
+    def formfield(self, **kwargs):
+...
+
+class URLField(CharField):
+    default_validators = [validators.URLValidator()]
+    description = _("URL")
+
+    def __init__(self, verbose_name=None, name=None, **kwargs):
+...
+    def deconstruct(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class BinaryField(Field):
+    description = _("Raw binary data")
+    empty_values = [None, b'']
+
+    def __init__(self, *args, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_str_default_value(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def get_placeholder(self, value, compiler, connection):
+...
+    def get_default(self):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def value_to_string(self, obj):
+...
+    def to_python(self, value):
+...
+
+class UUIDField(Field):
+    default_error_messages = {
+        'invalid': _("'%(value)s' is not a valid UUID."),
+    }
+    description = _('Universally unique identifier')
+    empty_strings_allowed = False
+
+    def __init__(self, verbose_name=None, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def to_python(self, value):
+...
+    def formfield(self, **kwargs):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+8
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Incorrect removal of order_by clause created as multiline RawSQL
+Description
+	
+Hi.
+The SQLCompiler is ripping off one of my "order by" clause, because he "thinks" the clause was already "seen" (in SQLCompiler.get_order_by()). I'm using expressions written as multiline RawSQLs, which are similar but not the same. 
+The bug is located in SQLCompiler.get_order_by(), somewhere around line computing part of SQL query without ordering:
+without_ordering = self.ordering_parts.search(sql).group(1)
+The sql variable contains multiline sql. As a result, the self.ordering_parts regular expression is returning just a line containing ASC or DESC words. This line is added to seen set, and because my raw queries have identical last lines, only the first clasue is returing from SQLCompiler.get_order_by().
+As a quick/temporal fix I can suggest making sql variable clean of newline characters, like this:
+sql_oneline = ' '.join(sql.split('\n'))
+without_ordering = self.ordering_parts.search(sql_oneline).group(1)
+Note: beware of unicode (Py2.x u'') and EOL dragons (\r).
+Example of my query:
+	return MyModel.objects.all().order_by(
+		RawSQL('''
+			case when status in ('accepted', 'verification')
+				 then 2 else 1 end''', []).desc(),
+		RawSQL('''
+			case when status in ('accepted', 'verification')
+				 then (accepted_datetime, preferred_datetime)
+				 else null end''', []).asc(),
+		RawSQL('''
+			case when status not in ('accepted', 'verification')
+				 then (accepted_datetime, preferred_datetime, created_at)
+				 else null end''', []).desc())
+The ordering_parts.search is returing accordingly:
+'				 then 2 else 1 end)'
+'				 else null end'
+'				 else null end'
+Second RawSQL with a				 else null end part is removed from query.
+The fun thing is that the issue can be solved by workaround by adding a space or any other char to the last line. 
+So in case of RawSQL I can just say, that current implementation of avoiding duplicates in order by clause works only for special/rare cases (or does not work in all cases). 
+The bug filed here is about wrong identification of duplicates (because it compares only last line of SQL passed to order by clause).
+Hope my notes will help you fixing the issue. Sorry for my english.
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/db/models/sql/compiler.py
+
+FORCE = object()
+
+
+class SQLCompiler:
+    def __init__(self, query, connection, using):
+...
+    def setup_query(self):
+...
+    def pre_sql_setup(self):
+...
+    def get_group_by(self, select, order_by):
+...
+    def collapse_group_by(self, expressions, having):
+...
+    def get_select(self):
+...
+    def get_order_by(self):
+...
+    def get_extra_select(self, order_by, select):
+...
+    def quote_name_unless_alias(self, name):
+...
+    def compile(self, node, select_format=False):
+...
+    def get_combinator_sql(self, combinator, all):
+...
+    def as_sql(self, with_limits=True, with_col_aliases=False):
+...
+    def get_default_columns(self, start_alias=None, opts=None, from_parent=None):
+...
+    def get_distinct(self):
+...
+    def find_ordering_name(self, name, opts, alias=None, default_order='ASC',
+                           already_seen=None):
+...
+    def _setup_joins(self, pieces, opts, alias):
+...
+    def get_from_clause(self):
+...
+    def get_related_selections(self, select, opts=None, root_alias=None, cur_depth=1,
+                               requested=None, restricted=None):
+...
+    def get_select_for_update_of_arguments(self):
+...
+    def deferred_to_columns(self):
+...
+    def get_converters(self, expressions):
+...
+    def apply_converters(self, rows, converters):
+...
+    def results_iter(self, results=None, tuple_expected=False, chunked_fetch=False,
+                     chunk_size=GET_ITERATOR_CHUNK_SIZE):
+...
+    def has_results(self):
+...
+    def execute_sql(self, result_type=MULTI, chunked_fetch=False, chunk_size=GET_ITERATOR_CHUNK_SIZE):
+...
+    def as_subquery_condition(self, alias, columns, compiler):
+...
+    def explain_query(self):
+...
+
+class SQLInsertCompiler(SQLCompiler):
+    return_id = False
+
+    def field_as_sql(self, field, val):
+...
+    def prepare_value(self, field, value):
+...
+    def pre_save_val(self, field, obj):
+...
+    def assemble_as_sql(self, fields, value_rows):
+...
+    def as_sql(self):
+...
+    def execute_sql(self, return_id=False):
+...
+
+class SQLDeleteCompiler(SQLCompiler):
+    def as_sql(self):
+...
+
+class SQLUpdateCompiler(SQLCompiler):
+    def as_sql(self):
+...
+    def execute_sql(self, result_type):
+...
+    def pre_sql_setup(self):
+...
+
+class SQLAggregateCompiler(SQLCompiler):
+    def as_sql(self):
+...
+
+def cursor_iter(cursor, sentinel, col_count, itersize):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+9
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Merging 3 or more media objects can throw unnecessary MediaOrderConflictWarnings
+Description
+	
+Consider the following form definition, where text-editor-extras.js depends on text-editor.js but all other JS files are independent:
+from django import forms
+class ColorPicker(forms.Widget):
+	class Media:
+		js = ['color-picker.js']
+class SimpleTextWidget(forms.Widget):
+	class Media:
+		js = ['text-editor.js']
+class FancyTextWidget(forms.Widget):
+	class Media:
+		js = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
+class MyForm(forms.Form):
+	background_color = forms.CharField(widget=ColorPicker())
+	intro = forms.CharField(widget=SimpleTextWidget())
+	body = forms.CharField(widget=FancyTextWidget())
+Django should be able to resolve the JS files for the final form into the order text-editor.js, text-editor-extras.js, color-picker.js. However, accessing MyForm().media results in:
+/projects/django/django/forms/widgets.py:145: MediaOrderConflictWarning: Detected duplicate Media files in an opposite order:
+text-editor-extras.js
+text-editor.js
+ MediaOrderConflictWarning,
+Media(css={}, js=['text-editor-extras.js', 'color-picker.js', 'text-editor.js'])
+The MediaOrderConflictWarning is a result of the order that the additions happen in: ColorPicker().media + SimpleTextWidget().media produces Media(css={}, js=['color-picker.js', 'text-editor.js']), which (wrongly) imposes the constraint that color-picker.js must appear before text-editor.js.
+The final result is particularly unintuitive here, as it's worse than the "naïve" result produced by Django 1.11 before order-checking was added (color-picker.js, text-editor.js, text-editor-extras.js), and the pair of files reported in the warning message seems wrong too (aren't color-picker.js and text-editor.js the wrong-ordered ones?)
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/forms/widgets.py
+
+__all__ = (
+    'Media', 'MediaDefiningClass', 'Widget', 'TextInput', 'NumberInput',
+    'EmailInput', 'URLInput', 'PasswordInput', 'HiddenInput',
+    'MultipleHiddenInput', 'FileInput', 'ClearableFileInput', 'Textarea',
+    'DateInput', 'DateTimeInput', 'TimeInput', 'CheckboxInput', 'Select',
+    'NullBooleanSelect', 'SelectMultiple', 'RadioSelect',
+    'CheckboxSelectMultiple', 'MultiWidget', 'SplitDateTimeWidget',
+    'SplitHiddenDateTimeWidget', 'SelectDateWidget',
+)
+
+MEDIA_TYPES = ('css', 'js')
+
+
+class MediaOrderConflictWarning(RuntimeWarning):
+    pass
+
+
+@html_safe
+class Media:
+    def __init__(self, media=None, css=None, js=None):
+...
+    def __repr__(self):
+...
+    def __str__(self):
+...
+    @property
+    def _css(self):
+...
+    @property
+    def _js(self):
+...
+    def render(self):
+...
+    def render_js(self):
+...
+    def render_css(self):
+...
+    def absolute_path(self, path):
+...
+    def __getitem__(self, name):
+...
+    @staticmethod
+    def merge(list_1, list_2):
+...
+    def __add__(self, other):
+...
+
+def media_property(cls):
+...
+
+class MediaDefiningClass(type):
+    def __new__(mcs, name, bases, attrs):
+...
+
+class Widget(metaclass=MediaDefiningClass):
+    needs_multipart_form = False  # Determines does this widget need multipart form
+    is_localized = False
+    is_required = False
+    supports_microseconds = True
+
+    def __init__(self, attrs=None):
+...
+    def __deepcopy__(self, memo):
+...
+    @property
+    def is_hidden(self):
+...
+    def subwidgets(self, name, value, attrs=None):
+...
+    def format_value(self, value):
+...
+    def get_context(self, name, value, attrs):
+...
+    def render(self, name, value, attrs=None, renderer=None):
+...
+    def _render(self, template_name, context, renderer=None):
+...
+    def build_attrs(self, base_attrs, extra_attrs=None):
+...
+    def value_from_datadict(self, data, files, name):
+...
+    def value_omitted_from_data(self, data, files, name):
+...
+    def id_for_label(self, id_):
+...
+    def use_required_attribute(self, initial):
+...
+
+class Input(Widget):
+    input_type = None  # Subclasses must define this.
+    template_name = 'django/forms/widgets/input.html'
+
+    def __init__(self, attrs=None):
+...
+    def get_context(self, name, value, attrs):
+...
+
+class TextInput(Input):
+    input_type = 'text'
+    template_name = 'django/forms/widgets/text.html'
+
+
+class NumberInput(Input):
+    input_type = 'number'
+    template_name = 'django/forms/widgets/number.html'
+
+
+class EmailInput(Input):
+    input_type = 'email'
+    template_name = 'django/forms/widgets/email.html'
+
+
+class URLInput(Input):
+    input_type = 'url'
+    template_name = 'django/forms/widgets/url.html'
+
+
+class PasswordInput(Input):
+    input_type = 'password'
+    template_name = 'django/forms/widgets/password.html'
+
+    def __init__(self, attrs=None, render_value=False):
+...
+    def get_context(self, name, value, attrs):
+...
+
+class HiddenInput(Input):
+    input_type = 'hidden'
+    template_name = 'django/forms/widgets/hidden.html'
+
+
+class MultipleHiddenInput(HiddenInput):
+    template_name = 'django/forms/widgets/multiple_hidden.html'
+
+    def get_context(self, name, value, attrs):
+...
+    def value_from_datadict(self, data, files, name):
+...
+    def format_value(self, value):
+...
+
+class FileInput(Input):
+    input_type = 'file'
+    needs_multipart_form = True
+    template_name = 'django/forms/widgets/file.html'
+
+    def format_value(self, value):
+...
+    def value_from_datadict(self, data, files, name):
+...
+    def value_omitted_from_data(self, data, files, name):
+...
+
+FILE_INPUT_CONTRADICTION = object()
+
+
+class ClearableFileInput(FileInput):
+    clear_checkbox_label = _('Clear')
+    initial_text = _('Currently')
+    input_text = _('Change')
+    template_name = 'django/forms/widgets/clearable_file_input.html'
+
+    def clear_checkbox_name(self, name):
+...
+    def clear_checkbox_id(self, name):
+...
+    def is_initial(self, value):
+...
+    def format_value(self, value):
+...
+    def get_context(self, name, value, attrs):
+...
+    def value_from_datadict(self, data, files, name):
+...
+    def use_required_attribute(self, initial):
+...
+    def value_omitted_from_data(self, data, files, name):
+...
+
+class Textarea(Widget):
+    template_name = 'django/forms/widgets/textarea.html'
+
+    def __init__(self, attrs=None):
+...
+
+class DateTimeBaseInput(TextInput):
+    format_key = ''
+    supports_microseconds = False
+
+    def __init__(self, attrs=None, format=None):
+...
+    def format_value(self, value):
+...
+
+class DateInput(DateTimeBaseInput):
+    format_key = 'DATE_INPUT_FORMATS'
+    template_name = 'django/forms/widgets/date.html'
+
+
+class DateTimeInput(DateTimeBaseInput):
+    format_key = 'DATETIME_INPUT_FORMATS'
+    template_name = 'django/forms/widgets/datetime.html'
+
+
+class TimeInput(DateTimeBaseInput):
+    format_key = 'TIME_INPUT_FORMATS'
+    template_name = 'django/forms/widgets/time.html'
+
+
+# Defined at module level so that CheckboxInput is picklable (#17976)
+def boolean_check(v):
+...
+
+class CheckboxInput(Input):
+    input_type = 'checkbox'
+    template_name = 'django/forms/widgets/checkbox.html'
+
+    def __init__(self, attrs=None, check_test=None):
+...
+    def format_value(self, value):
+...
+    def get_context(self, name, value, attrs):
+...
+    def value_from_datadict(self, data, files, name):
+...
+    def value_omitted_from_data(self, data, files, name):
+...
+
+class ChoiceWidget(Widget):
+    allow_multiple_selected = False
+    input_type = None
+    template_name = None
+    option_template_name = None
+    add_id_index = True
+    checked_attribute = {'checked': True}
+    option_inherits_attrs = True
+
+    def __init__(self, attrs=None, choices=()):
+...
+    def __deepcopy__(self, memo):
+...
+    def subwidgets(self, name, value, attrs=None):
+...
+    def options(self, name, value, attrs=None):
+...
+    def optgroups(self, name, value, attrs=None):
+...
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+...
+    def get_context(self, name, value, attrs):
+...
+    def id_for_label(self, id_, index='0'):
+...
+    def value_from_datadict(self, data, files, name):
+...
+    def format_value(self, value):
+...
+
+class Select(ChoiceWidget):
+    input_type = 'select'
+    template_name = 'django/forms/widgets/select.html'
+    option_template_name = 'django/forms/widgets/select_option.html'
+    add_id_index = False
+    checked_attribute = {'selected': True}
+    option_inherits_attrs = False
+
+    def get_context(self, name, value, attrs):
+...
+    @staticmethod
+    def _choice_has_empty_value(choice):
+...
+    def use_required_attribute(self, initial):
+...
+
+class NullBooleanSelect(Select):
+    def __init__(self, attrs=None):
+...
+    def format_value(self, value):
+...
+    def value_from_datadict(self, data, files, name):
+...
+
+class SelectMultiple(Select):
+    allow_multiple_selected = True
+
+    def value_from_datadict(self, data, files, name):
+...
+    def value_omitted_from_data(self, data, files, name):
+...
+
+class RadioSelect(ChoiceWidget):
+    input_type = 'radio'
+    template_name = 'django/forms/widgets/radio.html'
+    option_template_name = 'django/forms/widgets/radio_option.html'
+
+
+class CheckboxSelectMultiple(ChoiceWidget):
+    allow_multiple_selected = True
+    input_type = 'checkbox'
+    template_name = 'django/forms/widgets/checkbox_select.html'
+    option_template_name = 'django/forms/widgets/checkbox_option.html'
+
+    def use_required_attribute(self, initial):
+...
+    def value_omitted_from_data(self, data, files, name):
+...
+    def id_for_label(self, id_, index=None):
+...
+
+class MultiWidget(Widget):
+    template_name = 'django/forms/widgets/multiwidget.html'
+
+    def __init__(self, widgets, attrs=None):
+...
+    @property
+    def is_hidden(self):
+...
+    def get_context(self, name, value, attrs):
+...
+    def id_for_label(self, id_):
+...
+    def value_from_datadict(self, data, files, name):
+...
+    def value_omitted_from_data(self, data, files, name):
+...
+    def decompress(self, value):
+...
+    def _get_media(self):
+...
+    media = property(_get_media)
+
+    def __deepcopy__(self, memo):
+...
+    @property
+    def needs_multipart_form(self):
+...
+
+class SplitDateTimeWidget(MultiWidget):
+    supports_microseconds = False
+    template_name = 'django/forms/widgets/splitdatetime.html'
+
+    def __init__(self, attrs=None, date_format=None, time_format=None, date_attrs=None, time_attrs=None):
+...
+    def decompress(self, value):
+...
+
+class SplitHiddenDateTimeWidget(SplitDateTimeWidget):
+    template_name = 'django/forms/widgets/splithiddendatetime.html'
+
+    def __init__(self, attrs=None, date_format=None, time_format=None, date_attrs=None, time_attrs=None):
+...
+
+class SelectDateWidget(Widget):
+    none_value = ('', '---')
+    month_field = '%s_month'
+    day_field = '%s_day'
+    year_field = '%s_year'
+    template_name = 'django/forms/widgets/select_date.html'
+    input_type = 'select'
+    select_widget = Select
+    date_re = re.compile(r'(\d{4}|0)-(\d\d?)-(\d\d?)$')
+
+    def __init__(self, attrs=None, years=None, months=None, empty_label=None):
+...
+    def get_context(self, name, value, attrs):
+...
+    def format_value(self, value):
+...
+    @staticmethod
+    def _parse_date_fmt():
+...
+    def id_for_label(self, id_):
+...
+    def value_from_datadict(self, data, files, name):
+...
+    def value_omitted_from_data(self, data, files, name):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+10
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+sqlmigrate wraps it's outpout in BEGIN/COMMIT even if the database doesn't support transactional DDL
+Description
+	 
+		(last modified by Simon Charette)
+	 
+The migration executor only adds the outer BEGIN/COMMIT ​if the migration is atomic and ​the schema editor can rollback DDL but the current sqlmigrate logic only takes migration.atomic into consideration.
+The issue can be addressed by
+Changing sqlmigrate ​assignment of self.output_transaction to consider connection.features.can_rollback_ddl as well.
+Adding a test in tests/migrations/test_commands.py based on ​an existing test for non-atomic migrations that mocks connection.features.can_rollback_ddl to False instead of overdidding MIGRATION_MODULES to point to a non-atomic migration.
+I marked the ticket as easy picking because I included the above guidelines but feel free to uncheck it if you deem it inappropriate.
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/db/migrations/executor.py
+
+
+class MigrationExecutor:
+
+    def __init__(self, connection, progress_callback=None):
+...
+    def migration_plan(self, targets, clean_start=False):
+...
+    def _create_project_state(self, with_applied_migrations=False):
+...
+    def migrate(self, targets, plan=None, state=None, fake=False, fake_initial=False):
+...
+    def _migrate_all_forwards(self, state, plan, full_plan, fake, fake_initial):
+...
+    def _migrate_all_backwards(self, plan, full_plan, fake):
+...
+    def collect_sql(self, plan):
+...
+    def apply_migration(self, state, migration, fake=False, fake_initial=False):
+...
+    def record_migration(self, migration):
+...
+    def unapply_migration(self, state, migration, fake=False):
+...
+    def check_replacements(self):
+...
+    def detect_soft_applied(self, project_state, migration):
+
+
+### PATH: django/db/migrations/operations/models.py
+
+
+def _check_for_duplicates(arg_name, objs):
+...
+
+class ModelOperation(Operation):
+    def __init__(self, name):
+...
+    @cached_property
+    def name_lower(self):
+...
+    def references_model(self, name, app_label=None):
+...
+    def reduce(self, operation, app_label=None):
+...
+
+class CreateModel(ModelOperation):
+
+    serialization_expand_args = ['fields', 'options', 'managers']
+
+    def __init__(self, name, fields, options=None, bases=None, managers=None):
+...
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def describe(self):
+...
+    def references_model(self, name, app_label=None):
+...
+    def reduce(self, operation, app_label=None):
+...
+
+class DeleteModel(ModelOperation):
+
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def references_model(self, name, app_label=None):
+...
+    def describe(self):
+...
+
+class RenameModel(ModelOperation):
+
+    def __init__(self, old_name, new_name):
+...
+    @cached_property
+    def old_name_lower(self):
+...
+    @cached_property
+    def new_name_lower(self):
+...
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def references_model(self, name, app_label=None):
+...
+    def describe(self):
+...
+    def reduce(self, operation, app_label=None):
+...
+
+class AlterModelTable(ModelOperation):
+
+    def __init__(self, name, table):
+...
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def describe(self):
+...
+    def reduce(self, operation, app_label=None):
+...
+
+class ModelOptionOperation(ModelOperation):
+    def reduce(self, operation, app_label=None):
+...
+
+class AlterTogetherOptionOperation(ModelOptionOperation):
+    option_name = None
+
+    def __init__(self, name, option_value):
+...
+    @cached_property
+    def option_value(self):
+...
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def references_field(self, model_name, name, app_label=None):
+...
+    def describe(self):
+...
+
+class AlterUniqueTogether(AlterTogetherOptionOperation):
+    option_name = 'unique_together'
+
+    def __init__(self, name, unique_together):
+...
+
+class AlterIndexTogether(AlterTogetherOptionOperation):
+    option_name = "index_together"
+
+    def __init__(self, name, index_together):
+...
+
+class AlterOrderWithRespectTo(ModelOptionOperation):
+
+    option_name = 'order_with_respect_to'
+
+    def __init__(self, name, order_with_respect_to):
+...
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def references_field(self, model_name, name, app_label=None):
+...
+    def describe(self):
+...
+
+class AlterModelOptions(ModelOptionOperation):
+
+    # Model options we want to compare and preserve in an AlterModelOptions op
+    ALTER_OPTION_KEYS = [
+        "base_manager_name",
+        "default_manager_name",
+        "default_related_name",
+        "get_latest_by",
+        "managed",
+        "ordering",
+        "permissions",
+        "default_permissions",
+        "select_on_save",
+        "verbose_name",
+        "verbose_name_plural",
+    ]
+
+    def __init__(self, name, options):
+...
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def describe(self):
+...
+
+class AlterModelManagers(ModelOptionOperation):
+
+    serialization_expand_args = ['managers']
+
+    def __init__(self, name, managers):
+...
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def describe(self):
+...
+
+class IndexOperation(Operation):
+    option_name = 'indexes'
+
+    @cached_property
+    def model_name_lower(self):
+...
+
+class AddIndex(IndexOperation):
+
+    def __init__(self, model_name, index):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def deconstruct(self):
+...
+    def describe(self):
+...
+
+class RemoveIndex(IndexOperation):
+
+    def __init__(self, model_name, name):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def deconstruct(self):
+...
+    def describe(self):
+...
+
+class AddConstraint(IndexOperation):
+    option_name = 'constraints'
+
+    def __init__(self, model_name, constraint):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def deconstruct(self):
+...
+    def describe(self):
+...
+
+class RemoveConstraint(IndexOperation):
+    option_name = 'constraints'
+
+    def __init__(self, model_name, name):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def deconstruct(self):
+...
+    def describe(self):
+
+
+### PATH: django/db/migrations/operations/special.py
+
+
+class SeparateDatabaseAndState(Operation):
+
+    serialization_expand_args = ['database_operations', 'state_operations']
+
+    def __init__(self, database_operations=None, state_operations=None):
+...
+    def deconstruct(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def describe(self):
+...
+
+class RunSQL(Operation):
+    noop = ''
+
+    def __init__(self, sql, reverse_sql=None, state_operations=None, hints=None, elidable=False):
+...
+    def deconstruct(self):
+...
+    @property
+    def reversible(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def describe(self):
+...
+    def _run_sql(self, schema_editor, sqls):
+...
+
+class RunPython(Operation):
+
+    reduces_to_sql = False
+
+    def __init__(self, code, reverse_code=None, atomic=None, hints=None, elidable=False):
+...
+    def deconstruct(self):
+...
+    @property
+    def reversible(self):
+...
+    def state_forwards(self, app_label, state):
+...
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+...
+    def describe(self):
+...
+    @staticmethod
+    def noop(apps, schema_editor):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+13
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+HttpResponse doesn't handle memoryview objects
+Description
+	
+I am trying to write a BinaryField retrieved from the database into a HttpResponse. When the database is Sqlite this works correctly, but Postgresql returns the contents of the field as a memoryview object and it seems like current Django doesn't like this combination:
+from django.http import HttpResponse																	 
+# String content
+response = HttpResponse("My Content")																			
+response.content																								 
+# Out: b'My Content'
+# This is correct
+# Bytes content
+response = HttpResponse(b"My Content")																		 
+response.content																								 
+# Out: b'My Content'
+# This is also correct
+# memoryview content
+response = HttpResponse(memoryview(b"My Content"))															 
+response.content
+# Out: b'<memory at 0x7fcc47ab2648>'
+# This is not correct, I am expecting b'My Content'
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/http/response.py
+
+_charset_from_content_type_re = re.compile(r';\s*charset=(?P<charset>[^\s;]+)', re.I)
+
+
+class BadHeaderError(ValueError):
+    pass
+
+
+class HttpResponseBase:
+
+    status_code = 200
+
+    def __init__(self, content_type=None, status=None, reason=None, charset=None):
+...
+    @property
+    def reason_phrase(self):
+...
+    @reason_phrase.setter
+    def reason_phrase(self, value):
+...
+    @property
+    def charset(self):
+...
+    @charset.setter
+    def charset(self, value):
+...
+    def serialize_headers(self):
+...
+    __bytes__ = serialize_headers
+
+    @property
+    def _content_type_for_repr(self):
+...
+    def _convert_to_charset(self, value, charset, mime_encode=False):
+...
+    def __setitem__(self, header, value):
+...
+    def __delitem__(self, header):
+...
+    def __getitem__(self, header):
+...
+    def has_header(self, header):
+...
+    __contains__ = has_header
+
+    def items(self):
+...
+    def get(self, header, alternate=None):
+...
+    def set_cookie(self, key, value='', max_age=None, expires=None, path='/',
+                   domain=None, secure=False, httponly=False, samesite=None):
+...
+    def setdefault(self, key, value):
+...
+    def set_signed_cookie(self, key, value, salt='', **kwargs):
+...
+    def delete_cookie(self, key, path='/', domain=None):
+...
+    # Common methods used by subclasses
+
+    def make_bytes(self, value):
+...
+    # These methods partially implement the file-like object interface.
+    # See https://docs.python.org/library/io.html#io.IOBase
+
+    # The WSGI server must call this method upon completion of the request.
+    # See http://blog.dscpl.com.au/2012/10/obligations-for-calling-close-on.html
+    def close(self):
+...
+    def write(self, content):
+...
+    def flush(self):
+...
+    def tell(self):
+...
+    # These methods partially implement a stream-like object interface.
+    # See https://docs.python.org/library/io.html#io.IOBase
+
+    def readable(self):
+...
+    def seekable(self):
+...
+    def writable(self):
+...
+    def writelines(self, lines):
+...
+
+class HttpResponse(HttpResponseBase):
+
+    streaming = False
+
+    def __init__(self, content=b'', *args, **kwargs):
+...
+    def __repr__(self):
+...
+    def serialize(self):
+...
+    __bytes__ = serialize
+
+    @property
+    def content(self):
+...
+    @content.setter
+    def content(self, value):
+...
+    def __iter__(self):
+...
+    def write(self, content):
+...
+    def tell(self):
+...
+    def getvalue(self):
+...
+    def writable(self):
+...
+    def writelines(self, lines):
+...
+
+class StreamingHttpResponse(HttpResponseBase):
+
+    streaming = True
+
+    def __init__(self, streaming_content=(), *args, **kwargs):
+...
+    @property
+    def content(self):
+...
+    @property
+    def streaming_content(self):
+...
+    @streaming_content.setter
+    def streaming_content(self, value):
+...
+    def _set_streaming_content(self, value):
+...
+    def __iter__(self):
+...
+    def getvalue(self):
+...
+
+class FileResponse(StreamingHttpResponse):
+    block_size = 4096
+
+    def __init__(self, *args, as_attachment=False, filename='', **kwargs):
+...
+    def _set_streaming_content(self, value):
+...
+    def set_headers(self, filelike):
+...
+
+class HttpResponseRedirectBase(HttpResponse):
+    allowed_schemes = ['http', 'https', 'ftp']
+
+    def __init__(self, redirect_to, *args, **kwargs):
+...
+    url = property(lambda self: self['Location'])
+
+    def __repr__(self):
+...
+
+class HttpResponseRedirect(HttpResponseRedirectBase):
+    status_code = 302
+
+
+class HttpResponsePermanentRedirect(HttpResponseRedirectBase):
+    status_code = 301
+
+
+class HttpResponseNotModified(HttpResponse):
+    status_code = 304
+
+    def __init__(self, *args, **kwargs):
+...
+    @HttpResponse.content.setter
+    def content(self, value):
+...
+
+class HttpResponseBadRequest(HttpResponse):
+    status_code = 400
+
+
+class HttpResponseNotFound(HttpResponse):
+    status_code = 404
+
+
+class HttpResponseForbidden(HttpResponse):
+    status_code = 403
+
+
+class HttpResponseNotAllowed(HttpResponse):
+    status_code = 405
+
+    def __init__(self, permitted_methods, *args, **kwargs):
+...
+    def __repr__(self):
+...
+
+class HttpResponseGone(HttpResponse):
+    status_code = 410
+
+
+class HttpResponseServerError(HttpResponse):
+    status_code = 500
+
+
+class Http404(Exception):
+    pass
+
+
+class JsonResponse(HttpResponse):
+
+    def __init__(self, data, encoder=DjangoJSONEncoder, safe=True,
+                 json_dumps_params=None, **kwargs):
+
+
+### PATH: django/db/models/fields/__init__.py
+
+__all__ = [
+    'AutoField', 'BLANK_CHOICE_DASH', 'BigAutoField', 'BigIntegerField',
+    'BinaryField', 'BooleanField', 'CharField', 'CommaSeparatedIntegerField',
+    'DateField', 'DateTimeField', 'DecimalField', 'DurationField',
+    'EmailField', 'Empty', 'Field', 'FieldDoesNotExist', 'FilePathField',
+    'FloatField', 'GenericIPAddressField', 'IPAddressField', 'IntegerField',
+    'NOT_PROVIDED', 'NullBooleanField', 'PositiveIntegerField',
+    'PositiveSmallIntegerField', 'SlugField', 'SmallIntegerField', 'TextField',
+    'TimeField', 'URLField', 'UUIDField',
+]
+
+
+class Empty:
+    pass
+
+
+class NOT_PROVIDED:
+    pass
+
+
+# The values to use for "blank" in SelectFields. Will be appended to the start
+# of most "choices" lists.
+BLANK_CHOICE_DASH = [("", "---------")]
+
+
+def _load_field(app_label, model_name, field_name):
+...
+
+# A guide to Field parameters:
+#
+#   * name:      The name of the field specified in the model.
+#   * attname:   The attribute to use on the model object. This is the same as
+#                "name", except in the case of ForeignKeys, where "_id" is
+#                appended.
+#   * db_column: The db_column specified in the model (or None).
+#   * column:    The database column for this field. This is the same as
+#                "attname", except if db_column is specified.
+#
+# Code that introspects values, or does other dynamic things, should use
+# attname. For example, this gets the primary key value of object "obj":
+#
+#     getattr(obj, opts.pk.attname)
+
+def _empty(of_cls):
+...
+
+def return_None():
+...
+
+@total_ordering
+class Field(RegisterLookupMixin):
+
+    # Designates whether empty strings fundamentally are allowed at the
+    # database level.
+    empty_strings_allowed = True
+    empty_values = list(validators.EMPTY_VALUES)
+
+    # These track each time a Field instance is created. Used to retain order.
+    # The auto_creation_counter is used for fields that Django implicitly
+    # creates, creation_counter is used for all user-specified fields.
+    creation_counter = 0
+    auto_creation_counter = -1
+    default_validators = []  # Default set of validators
+    default_error_messages = {
+        'invalid_choice': _('Value %(value)r is not a valid choice.'),
+        'null': _('This field cannot be null.'),
+        'blank': _('This field cannot be blank.'),
+        'unique': _('%(model_name)s with this %(field_label)s '
+                    'already exists.'),
+        # Translators: The 'lookup_type' is one of 'date', 'year' or 'month'.
+        # Eg: "Title must be unique for pub_date year"
+        'unique_for_date': _("%(field_label)s must be unique for "
+                             "%(date_field_label)s %(lookup_type)s."),
+    }
+    system_check_deprecated_details = None
+    system_check_removed_details = None
+
+    # Field flags
+    hidden = False
+
+    many_to_many = None
+    many_to_one = None
+    one_to_many = None
+    one_to_one = None
+    related_model = None
+
+    # Generic field type description, usually overridden by subclasses
+    def _description(self):
+...
+    description = property(_description)
+
+    def __init__(self, verbose_name=None, name=None, primary_key=False,
+                 max_length=None, unique=False, blank=False, null=False,
+                 db_index=False, rel=None, default=NOT_PROVIDED, editable=True,
+                 serialize=True, unique_for_date=None, unique_for_month=None,
+                 unique_for_year=None, choices=None, help_text='', db_column=None,
+                 db_tablespace=None, auto_created=False, validators=(),
+                 error_messages=None):
+...
+    def __str__(self):
+...
+    def __repr__(self):
+...
+    def check(self, **kwargs):
+...
+    def _check_field_name(self):
+...
+    def _check_choices(self):
+...
+    def _check_db_index(self):
+...
+    def _check_null_allowed_for_primary_keys(self):
+...
+    def _check_backend_specific_checks(self, **kwargs):
+...
+    def _check_validators(self):
+...
+    def _check_deprecation_details(self):
+...
+    def get_col(self, alias, output_field=None):
+...
+    @cached_property
+    def cached_col(self):
+...
+    def select_format(self, compiler, sql, params):
+...
+    def deconstruct(self):
+...
+    def clone(self):
+...
+    def __eq__(self, other):
+...
+    def __lt__(self, other):
+...
+    def __hash__(self):
+...
+    def __deepcopy__(self, memodict):
+...
+    def __copy__(self):
+...
+    def __reduce__(self):
+...
+    def get_pk_value_on_save(self, instance):
+...
+    def to_python(self, value):
+...
+    @cached_property
+    def validators(self):
+...
+    def run_validators(self, value):
+...
+    def validate(self, value, model_instance):
+...
+    def clean(self, value, model_instance):
+...
+    def db_type_parameters(self, connection):
+...
+    def db_check(self, connection):
+...
+    def db_type(self, connection):
+...
+    def rel_db_type(self, connection):
+...
+    def cast_db_type(self, connection):
+...
+    def db_parameters(self, connection):
+...
+    def db_type_suffix(self, connection):
+...
+    def get_db_converters(self, connection):
+...
+    @property
+    def unique(self):
+...
+    @property
+    def db_tablespace(self):
+...
+    def set_attributes_from_name(self, name):
+...
+    def contribute_to_class(self, cls, name, private_only=False):
+...
+    def get_filter_kwargs_for_object(self, obj):
+...
+    def get_attname(self):
+...
+    def get_attname_column(self):
+...
+    def get_internal_type(self):
+...
+    def pre_save(self, model_instance, add):
+...
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def get_db_prep_save(self, value, connection):
+...
+    def has_default(self):
+...
+    def get_default(self):
+...
+    @cached_property
+    def _get_default(self):
+...
+    def get_choices(self, include_blank=True, blank_choice=BLANK_CHOICE_DASH, limit_choices_to=None, ordering=()):
+...
+    def value_to_string(self, obj):
+...
+    def _get_flatchoices(self):
+...
+    flatchoices = property(_get_flatchoices)
+
+    def save_form_data(self, instance, data):
+...
+    def formfield(self, form_class=None, choices_form_class=None, **kwargs):
+...
+    def value_from_object(self, obj):
+...
+
+class AutoField(Field):
+    description = _("Integer")
+
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be an integer."),
+    }
+
+    def __init__(self, *args, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_primary_key(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def rel_db_type(self, connection):
+...
+    def validate(self, value, model_instance):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def get_prep_value(self, value):
+...
+    def contribute_to_class(self, cls, name, **kwargs):
+...
+    def formfield(self, **kwargs):
+...
+
+class BigAutoField(AutoField):
+    description = _("Big (8 byte) integer")
+
+    def get_internal_type(self):
+...
+    def rel_db_type(self, connection):
+...
+
+class BooleanField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be either True or False."),
+        'invalid_nullable': _("'%(value)s' value must be either True, False, or None."),
+    }
+    description = _("Boolean (Either True or False)")
+
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class CharField(Field):
+    description = _("String (up to %(max_length)s)")
+
+    def __init__(self, *args, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_max_length_attribute(self, **kwargs):
+...
+    def cast_db_type(self, connection):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class CommaSeparatedIntegerField(CharField):
+    default_validators = [validators.validate_comma_separated_integer_list]
+    description = _("Comma-separated integers")
+    system_check_removed_details = {
+        'msg': (
+            'CommaSeparatedIntegerField is removed except for support in '
+            'historical migrations.'
+        ),
+        'hint': (
+            'Use CharField(validators=[validate_comma_separated_integer_list]) '
+            'instead.'
+        ),
+        'id': 'fields.E901',
+    }
+
+
+class DateTimeCheckMixin:
+
+    def check(self, **kwargs):
+...
+    def _check_mutually_exclusive_options(self):
+...
+    def _check_fix_default_value(self):
+...
+
+class DateField(DateTimeCheckMixin, Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value has an invalid date format. It must be "
+                     "in YYYY-MM-DD format."),
+        'invalid_date': _("'%(value)s' value has the correct format (YYYY-MM-DD) "
+                          "but it is an invalid date."),
+    }
+    description = _("Date (without time)")
+
+    def __init__(self, verbose_name=None, name=None, auto_now=False,
+                 auto_now_add=False, **kwargs):
+...
+    def _check_fix_default_value(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def pre_save(self, model_instance, add):
+...
+    def contribute_to_class(self, cls, name, **kwargs):
+...
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def value_to_string(self, obj):
+...
+    def formfield(self, **kwargs):
+...
+
+class DateTimeField(DateField):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value has an invalid format. It must be in "
+                     "YYYY-MM-DD HH:MM[:ss[.uuuuuu]][TZ] format."),
+        'invalid_date': _("'%(value)s' value has the correct format "
+                          "(YYYY-MM-DD) but it is an invalid date."),
+        'invalid_datetime': _("'%(value)s' value has the correct format "
+                              "(YYYY-MM-DD HH:MM[:ss[.uuuuuu]][TZ]) "
+                              "but it is an invalid date/time."),
+    }
+    description = _("Date (with time)")
+
+    # __init__ is inherited from DateField
+
+    def _check_fix_default_value(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def pre_save(self, model_instance, add):
+...
+    # contribute_to_class is inherited from DateField, it registers
+    # get_next_by_FOO and get_prev_by_FOO
+
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def value_to_string(self, obj):
+...
+    def formfield(self, **kwargs):
+...
+
+class DecimalField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be a decimal number."),
+    }
+    description = _("Decimal number")
+
+    def __init__(self, verbose_name=None, name=None, max_digits=None,
+                 decimal_places=None, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_decimal_places(self):
+...
+    def _check_max_digits(self):
+...
+    def _check_decimal_places_and_max_digits(self, **kwargs):
+...
+    @cached_property
+    def validators(self):
+...
+    @cached_property
+    def context(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_db_prep_save(self, value, connection):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class DurationField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value has an invalid format. It must be in "
+                     "[DD] [[HH:]MM:]ss[.uuuuuu] format.")
+    }
+    description = _("Duration")
+
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def get_db_converters(self, connection):
+...
+    def value_to_string(self, obj):
+...
+    def formfield(self, **kwargs):
+...
+
+class EmailField(CharField):
+    default_validators = [validators.validate_email]
+    description = _("Email address")
+
+    def __init__(self, *args, **kwargs):
+...
+    def deconstruct(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class FilePathField(Field):
+    description = _("File path")
+
+    def __init__(self, verbose_name=None, name=None, path='', match=None,
+                 recursive=False, allow_files=True, allow_folders=False, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_allowing_files_or_folders(self, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+    def get_internal_type(self):
+...
+
+class FloatField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be a float."),
+    }
+    description = _("Floating point number")
+
+    def get_prep_value(self, value):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class IntegerField(Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be an integer."),
+    }
+    description = _("Integer")
+
+    def check(self, **kwargs):
+...
+    def _check_max_length_warning(self):
+...
+    @cached_property
+    def validators(self):
+...
+    def get_prep_value(self, value):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class BigIntegerField(IntegerField):
+    description = _("Big (8 byte) integer")
+    MAX_BIGINT = 9223372036854775807
+
+    def get_internal_type(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class IPAddressField(Field):
+    empty_strings_allowed = False
+    description = _("IPv4 address")
+    system_check_removed_details = {
+        'msg': (
+            'IPAddressField has been removed except for support in '
+            'historical migrations.'
+        ),
+        'hint': 'Use GenericIPAddressField instead.',
+        'id': 'fields.E900',
+    }
+
+    def __init__(self, *args, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_prep_value(self, value):
+...
+    def get_internal_type(self):
+...
+
+class GenericIPAddressField(Field):
+    empty_strings_allowed = False
+    description = _("IP address")
+    default_error_messages = {}
+
+    def __init__(self, verbose_name=None, name=None, protocol='both',
+                 unpack_ipv4=False, *args, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_blank_and_null_values(self, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class NullBooleanField(BooleanField):
+    default_error_messages = {
+        'invalid': _("'%(value)s' value must be either None, True or False."),
+        'invalid_nullable': _("'%(value)s' value must be either None, True or False."),
+    }
+    description = _("Boolean (Either True, False or None)")
+
+    def __init__(self, *args, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+
+class PositiveIntegerRelDbTypeMixin:
+
+    def rel_db_type(self, connection):
+...
+
+class PositiveIntegerField(PositiveIntegerRelDbTypeMixin, IntegerField):
+    description = _("Positive integer")
+
+    def get_internal_type(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class PositiveSmallIntegerField(PositiveIntegerRelDbTypeMixin, IntegerField):
+    description = _("Positive small integer")
+
+    def get_internal_type(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class SlugField(CharField):
+    default_validators = [validators.validate_slug]
+    description = _("Slug (up to %(max_length)s)")
+
+    def __init__(self, *args, max_length=50, db_index=True, allow_unicode=False, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class SmallIntegerField(IntegerField):
+    description = _("Small integer")
+
+    def get_internal_type(self):
+...
+
+class TextField(Field):
+    description = _("Text")
+
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def get_prep_value(self, value):
+...
+    def formfield(self, **kwargs):
+...
+
+class TimeField(DateTimeCheckMixin, Field):
+    empty_strings_allowed = False
+    default_error_messages = {
+        'invalid': _("'%(value)s' value has an invalid format. It must be in "
+                     "HH:MM[:ss[.uuuuuu]] format."),
+        'invalid_time': _("'%(value)s' value has the correct format "
+                          "(HH:MM[:ss[.uuuuuu]]) but it is an invalid time."),
+    }
+    description = _("Time")
+
+    def __init__(self, verbose_name=None, name=None, auto_now=False,
+                 auto_now_add=False, **kwargs):
+...
+    def _check_fix_default_value(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def to_python(self, value):
+...
+    def pre_save(self, model_instance, add):
+...
+    def get_prep_value(self, value):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def value_to_string(self, obj):
+...
+    def formfield(self, **kwargs):
+...
+
+class URLField(CharField):
+    default_validators = [validators.URLValidator()]
+    description = _("URL")
+
+    def __init__(self, verbose_name=None, name=None, **kwargs):
+...
+    def deconstruct(self):
+...
+    def formfield(self, **kwargs):
+...
+
+class BinaryField(Field):
+    description = _("Raw binary data")
+    empty_values = [None, b'']
+
+    def __init__(self, *args, **kwargs):
+...
+    def check(self, **kwargs):
+...
+    def _check_str_default_value(self):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def get_placeholder(self, value, compiler, connection):
+...
+    def get_default(self):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def value_to_string(self, obj):
+...
+    def to_python(self, value):
+...
+
+class UUIDField(Field):
+    default_error_messages = {
+        'invalid': _("'%(value)s' is not a valid UUID."),
+    }
+    description = _('Universally unique identifier')
+    empty_strings_allowed = False
+
+    def __init__(self, verbose_name=None, **kwargs):
+...
+    def deconstruct(self):
+...
+    def get_internal_type(self):
+...
+    def get_db_prep_value(self, value, connection, prepared=False):
+...
+    def to_python(self, value):
+...
+    def formfield(self, **kwargs):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+15
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Migration auth.0011_update_proxy_permissions fails for models recreated as a proxy.
+Description
+	 
+		(last modified by Mariusz Felisiak)
+	 
+I am trying to update my project to Django 2.2. When I launch python manage.py migrate, I get this error message when migration auth.0011_update_proxy_permissions is applying (full stacktrace is available ​here):
+django.db.utils.IntegrityError: duplicate key value violates unique constraint "idx_18141_auth_permission_content_type_id_01ab375a_uniq" DETAIL: Key (co.ntent_type_id, codename)=(12, add_agency) already exists.
+It looks like the migration is trying to re-create already existing entries in the auth_permission table. At first I though it cloud because we recently renamed a model. But after digging and deleting the entries associated with the renamed model from our database in the auth_permission table, the problem still occurs with other proxy models.
+I tried to update directly from 2.0.13 and 2.1.8. The issues appeared each time. I also deleted my venv and recreated it without an effect.
+I searched for a ticket about this on the bug tracker but found nothing. I also posted this on ​django-users and was asked to report this here.
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/contrib/auth/migrations/0011_update_proxy_permissions.py
+
+
+def update_proxy_model_permissions(apps, schema_editor, reverse=False):
+...
+
+def revert_proxy_model_permissions(apps, schema_editor):
+...
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ('auth', '0010_alter_group_name_max_length'),
+        ('contenttypes', '0002_remove_content_type_name'),
+    ]
+    operations = [
+        migrations.RunPython(update_proxy_model_permissions, revert_proxy_model_permissions),
+    ]
+
+### PATH: django/contrib/auth/migrations/__init__.py
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+16
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Autoreloader with StatReloader doesn't track changes in manage.py.
+Description
+	 
+		(last modified by Mariusz Felisiak)
+	 
+This is a bit convoluted, but here we go.
+Environment (OSX 10.11):
+$ python -V
+Python 3.6.2
+$ pip -V
+pip 19.1.1
+$ pip install Django==2.2.1
+Steps to reproduce:
+Run a server python manage.py runserver
+Edit the manage.py file, e.g. add print(): 
+def main():
+	print('sth')
+	os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ticket_30479.settings')
+	...
+Under 2.1.8 (and prior), this will trigger the auto-reloading mechanism. Under 2.2.1, it won't. As far as I can tell from the django.utils.autoreload log lines, it never sees the manage.py itself.
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/utils/autoreload.py
+
+autoreload_started = Signal()
+file_changed = Signal(providing_args=['file_path', 'kind'])
+
+DJANGO_AUTORELOAD_ENV = 'RUN_MAIN'
+
+logger = logging.getLogger('django.utils.autoreload')
+
+# If an error is raised while importing a file, it's not placed in sys.modules.
+# This means that any future modifications aren't caught. Keep a list of these
+# file paths to allow watching them in the future.
+_error_files = []
+_exception = None
+
+
+def check_errors(fn):
+...
+
+def raise_last_exception():
+...
+
+def ensure_echo_on():
+...
+
+def iter_all_python_module_files():
+...
+
+@functools.lru_cache(maxsize=1)
+def iter_modules_and_files(modules, extra_files):
+...
+
+@functools.lru_cache(maxsize=1)
+def common_roots(paths):
+...
+
+def sys_path_directories():
+...
+
+def get_child_arguments():
+...
+
+def trigger_reload(filename):
+...
+
+def restart_with_reloader():
+...
+
+class BaseReloader:
+    def __init__(self):
+...
+    def watch_dir(self, path, glob):
+...
+    def watch_file(self, path):
+...
+    def watched_files(self, include_globs=True):
+...
+    def wait_for_apps_ready(self, app_reg, django_main_thread):
+...
+    def run(self, django_main_thread):
+...
+    def run_loop(self):
+...
+    def tick(self):
+...
+    @classmethod
+    def check_availability(cls):
+...
+    def notify_file_changed(self, path):
+...
+    # These are primarily used for testing.
+    @property
+    def should_stop(self):
+...
+    def stop(self):
+...
+
+class StatReloader(BaseReloader):
+    SLEEP_TIME = 1  # Check for changes once per second.
+
+    def tick(self):
+...
+    def snapshot_files(self):
+...
+    @classmethod
+    def check_availability(cls):
+...
+
+class WatchmanUnavailable(RuntimeError):
+    pass
+
+
+class WatchmanReloader(BaseReloader):
+    def __init__(self):
+...
+    @cached_property
+    def client(self):
+...
+    def _watch_root(self, root):
+...
+    @functools.lru_cache()
+    def _get_clock(self, root):
+...
+    def _subscribe(self, directory, name, expression):
+...
+    def _subscribe_dir(self, directory, filenames):
+...
+    def _watch_glob(self, directory, patterns):
+...
+    def watched_roots(self, watched_files):
+...
+    def _update_watches(self):
+...
+    def update_watches(self):
+...
+    def _check_subscription(self, sub):
+...
+    def request_processed(self, **kwargs):
+...
+    def tick(self):
+...
+    def stop(self):
+...
+    def check_server_status(self, inner_ex=None):
+...
+    @classmethod
+    def check_availability(cls):
+...
+
+def get_reloader():
+...
+
+def start_django(reloader, main_func, *args, **kwargs):
+...
+
+def run_with_reloader(main_func, *args, **kwargs):
+
+
+### PATH: django/utils/translation/reloader.py
+
+
+def watch_for_translation_changes(sender, **kwargs):
+...
+
+def translation_file_changed(sender, file_path, **kwargs):
+
+
+### PATH: django/core/management/commands/runserver.py
+
+naiveip_re = re.compile(r"""^(?:
+(?P<addr>
+    (?P<ipv4>\d{1,3}(?:\.\d{1,3}){3}) |         # IPv4 address
+    (?P<ipv6>\[[a-fA-F0-9:]+\]) |               # IPv6 address
+    (?P<fqdn>[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*) # FQDN
+):)?(?P<port>\d+)$""", re.X)
+
+
+class Command(BaseCommand):
+    help = "Starts a lightweight Web server for development."
+
+    # Validation is called explicitly each time the server is reloaded.
+    requires_system_checks = False
+    stealth_options = ('shutdown_message',)
+
+    default_addr = '127.0.0.1'
+    default_addr_ipv6 = '::1'
+    default_port = '8000'
+    protocol = 'http'
+    server_cls = WSGIServer
+
+    def add_arguments(self, parser):
+...
+    def execute(self, *args, **options):
+...
+    def get_handler(self, *args, **options):
+...
+    def handle(self, *args, **options):
+...
+    def run(self, **options):
+...
+    def inner_run(self, *args, **options):
+...
+
+# Kept for backward compatibility
+BaseRunserverCommand = Command
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+
+18
+
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+
+### GitHub Problem Description ###
+Auto-reloading with StatReloader very intermittently throws "ValueError: embedded null byte".
+Description
+	
+Raising this mainly so that it's tracked, as I have no idea how to reproduce it, nor why it's happening. It ultimately looks like a problem with Pathlib, which wasn't used prior to 2.2.
+Stacktrace:
+Traceback (most recent call last):
+ File "manage.py" ...
+	execute_from_command_line(sys.argv)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/core/management/__init__.py", line 381, in execute_from_command_line
+	utility.execute()
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/core/management/__init__.py", line 375, in execute
+	self.fetch_command(subcommand).run_from_argv(self.argv)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/core/management/base.py", line 323, in run_from_argv
+	self.execute(*args, **cmd_options)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/core/management/commands/runserver.py", line 60, in execute
+	super().execute(*args, **options)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/core/management/base.py", line 364, in execute
+	output = self.handle(*args, **options)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/core/management/commands/runserver.py", line 95, in handle
+	self.run(**options)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/core/management/commands/runserver.py", line 102, in run
+	autoreload.run_with_reloader(self.inner_run, **options)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 577, in run_with_reloader
+	start_django(reloader, main_func, *args, **kwargs)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 562, in start_django
+	reloader.run(django_main_thread)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 280, in run
+	self.run_loop()
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 286, in run_loop
+	next(ticker)
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 326, in tick
+	for filepath, mtime in self.snapshot_files():
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 342, in snapshot_files
+	for file in self.watched_files():
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 241, in watched_files
+	yield from iter_all_python_module_files()
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 103, in iter_all_python_module_files
+	return iter_modules_and_files(modules, frozenset(_error_files))
+ File "/Userz/kez/path/to/venv/lib/python3.6/site-packages/django/utils/autoreload.py", line 132, in iter_modules_and_files
+	results.add(path.resolve().absolute())
+ File "/Users/kez/.pyenv/versions/3.6.2/lib/python3.6/pathlib.py", line 1120, in resolve
+	s = self._flavour.resolve(self, strict=strict)
+ File "/Users/kez/.pyenv/versions/3.6.2/lib/python3.6/pathlib.py", line 346, in resolve
+	return _resolve(base, str(path)) or sep
+ File "/Users/kez/.pyenv/versions/3.6.2/lib/python3.6/pathlib.py", line 330, in _resolve
+	target = accessor.readlink(newpath)
+ File "/Users/kez/.pyenv/versions/3.6.2/lib/python3.6/pathlib.py", line 441, in readlink
+	return os.readlink(path)
+ValueError: embedded null byte
+I did print(path) before os.readlink(path) in pathlib and ended up with:
+/Users/kez
+/Users/kez/.pyenv
+/Users/kez/.pyenv/versions
+/Users/kez/.pyenv/versions/3.6.2
+/Users/kez/.pyenv/versions/3.6.2/lib
+/Users/kez/.pyenv/versions/3.6.2/lib/python3.6
+/Users/kez/.pyenv/versions/3.6.2/lib/python3.6/asyncio
+/Users/kez/.pyenv/versions/3.6.2/lib/python3.6/asyncio/selector_events.py
+/Users
+It always seems to be /Users which is last
+It may have already printed /Users as part of another .resolve() multiple times (that is, the order is not deterministic, and it may have traversed beyond /Users successfully many times during startup.
+I don't know where to begin looking for the rogue null byte, nor why it only exists sometimes.
+Best guess I have is that there's a mountpoint in /Users to a samba share which may not have been connected to yet? I dunno.
+I have no idea if it's fixable without removing the use of pathlib (which tbh I think should happen anyway, because it's slow) and reverting to using os.path.join and friends. 
+I have no idea if it's fixed in a later Python version, but with no easy way to reproduce ... dunno how I'd check.
+I have no idea if it's something specific to my system (pyenv, OSX 10.11, etc)
+
+
+### Skeleton of Relevant Files ###
+
+### PATH: django/utils/autoreload.py
+
+autoreload_started = Signal()
+file_changed = Signal(providing_args=['file_path', 'kind'])
+
+DJANGO_AUTORELOAD_ENV = 'RUN_MAIN'
+
+logger = logging.getLogger('django.utils.autoreload')
+
+# If an error is raised while importing a file, it's not placed in sys.modules.
+# This means that any future modifications aren't caught. Keep a list of these
+# file paths to allow watching them in the future.
+_error_files = []
+_exception = None
+
+
+def check_errors(fn):
+...
+
+def raise_last_exception():
+...
+
+def ensure_echo_on():
+...
+
+def iter_all_python_module_files():
+...
+
+@functools.lru_cache(maxsize=1)
+def iter_modules_and_files(modules, extra_files):
+...
+
+@functools.lru_cache(maxsize=1)
+def common_roots(paths):
+...
+
+def sys_path_directories():
+...
+
+def get_child_arguments():
+...
+
+def trigger_reload(filename):
+...
+
+def restart_with_reloader():
+...
+
+class BaseReloader:
+    def __init__(self):
+...
+    def watch_dir(self, path, glob):
+...
+    def watch_file(self, path):
+...
+    def watched_files(self, include_globs=True):
+...
+    def wait_for_apps_ready(self, app_reg, django_main_thread):
+...
+    def run(self, django_main_thread):
+...
+    def run_loop(self):
+...
+    def tick(self):
+...
+    @classmethod
+    def check_availability(cls):
+...
+    def notify_file_changed(self, path):
+...
+    # These are primarily used for testing.
+    @property
+    def should_stop(self):
+...
+    def stop(self):
+...
+
+class StatReloader(BaseReloader):
+    SLEEP_TIME = 1  # Check for changes once per second.
+
+    def tick(self):
+...
+    def snapshot_files(self):
+...
+    @classmethod
+    def check_availability(cls):
+...
+
+class WatchmanUnavailable(RuntimeError):
+    pass
+
+
+class WatchmanReloader(BaseReloader):
+    def __init__(self):
+...
+    @cached_property
+    def client(self):
+...
+    def _watch_root(self, root):
+...
+    @functools.lru_cache()
+    def _get_clock(self, root):
+...
+    def _subscribe(self, directory, name, expression):
+...
+    def _subscribe_dir(self, directory, filenames):
+...
+    def _watch_glob(self, directory, patterns):
+...
+    def watched_roots(self, watched_files):
+...
+    def _update_watches(self):
+...
+    def update_watches(self):
+...
+    def _check_subscription(self, sub):
+...
+    def request_processed(self, **kwargs):
+...
+    def tick(self):
+...
+    def stop(self):
+...
+    def check_server_status(self, inner_ex=None):
+...
+    @classmethod
+    def check_availability(cls):
+...
+
+def get_reloader():
+...
+
+def start_django(reloader, main_func, *args, **kwargs):
+...
+
+def run_with_reloader(main_func, *args, **kwargs):
+
+
+
+###
+Task:
+Please provide the complete set of locations as either a class name, a function name, or a variable name. Note that if you include a class, you do NOT need to list its specific methods. You can include either the entire class or don't include the class name and instead include specific methods in the class. Pay attention that the response should be on the same format as the following example:
+```
+path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+Return multiple files and locations in a single response if need. Do not return any other information.
+
+
+
+
+
+
+
+
+
+

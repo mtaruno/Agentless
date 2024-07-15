@@ -10,7 +10,7 @@ import os
 import config
 
 cfg = config.Config(os.path.join(os.getcwd(), "keys.cfg"))
-# client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+client = openai.OpenAI(api_key=cfg['OPENAI_API_KEY'])
 zhipu_client = ZhipuAI(api_key=cfg["ZHIPU_API_KEY"])
 
 def num_tokens_from_messages(message, model="gpt-3.5-turbo-0301"):

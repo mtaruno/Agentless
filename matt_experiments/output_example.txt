@@ -1,0 +1,140 @@
+0
+```python
+path1/astropy/modeling/separable.py
+function: separability_matrix
+function: _compute_n_outputs
+function: _arith_oper
+function: _coord_matrix
+function: _cstack
+function: _cdot
+function: _separable
+```
+
+
+1
+```
+astropy/io/ascii/core.py
+class: BaseOutputter
+function: _validate_and_copy
+function: _convert_vals
+class: TableOutputter
+function: __call__
+class: BaseReader
+function: write_header
+function: write
+class: CsvWriter
+function: writerow
+function: writerows
+function: _writerow
+class: BaseHeader
+function: write_comments
+function: write
+```
+
+
+2
+```python
+astropy/io/ascii/qdp.py
+function: _read_table_qdp
+class: QDP
+```
+
+
+5
+```python
+astropy/wcs/wcs.py
+function: wcs_pix2world
+function: _array_converter
+function: _return_list_of_arrays
+```
+
+
+6
+```
+path: django/core/files/storage.py
+class: FileSystemStorage
+function: FileSystemStorage._save
+```
+
+
+7
+```
+path1/django/db/models/fields/files.py
+class: FilePathField
+```
+
+
+8
+```
+class: SQLCompiler
+function: SQLCompiler.get_order_by
+```
+
+
+9
+```
+class: Media
+function: Media.merge
+```
+
+
+10
+```
+path1/django/db/migrations/executor.py
+function: MigrationExecutor.migrate
+function: MigrationExecutor.apply_migration
+function: MigrationExecutor.unapply_migration
+function: MigrationExecutor.collect_sql
+```
+
+
+13
+```
+path1/django/http/response.py
+class: HttpResponse
+function: HttpResponse.content
+```
+
+
+15
+```
+path1/django/contrib/auth/migrations/0011_update_proxy_permissions.py
+function: update_proxy_model_permissions
+function: revert_proxy_model_permissions
+class: Migration
+```
+
+
+16
+```plaintext
+path1/django/utils/autoreload.py
+function: restart_with_reloader
+class: StatReloader
+class: WatchmanReloader
+function: get_reloader
+function: start_django
+function: run_with_reloader
+```
+
+
+18
+```
+pathlib.py
+function: os.readlink
+class: BaseReloader
+function: StatReloader.tick
+function: StatReloader.snapshot_files
+function: StatReloader.watched_files
+function: iter_all_python_module_files
+function: iter_modules_and_files
+function: common_roots
+function: sys_path_directories
+function: get_child_arguments
+function: trigger_reload
+function: restart_with_reloader
+function: get_reloader
+function: start_django
+function: run_with_reloader
+```
+
+
