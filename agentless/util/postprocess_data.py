@@ -410,15 +410,18 @@ def extract_locs_for_files(locs, file_names):
 
             with open("localize_related.txt", "a") as f:
                 f.write("Current Line:\n" + str(line) + "\n")
+                f.write("processed: " + str(line.strip().split(" ")[1]) + "\n") 
 
             if line.strip().endswith(".py"):
-                current_file_name = line.strip()
+                current_file_name = line.strip().split(" ")[1]
               
             elif line.strip() and any(
                 line.startswith(w)
                 for w in ["line:", "function:", "class:", "variable:", "path:"] # add a path 
             ):
                 if current_file_name in results: # only take file name in results 
+                    with open("localize_related.txt", "a") as f:
+                        f.write("Curr filename found in results\n")
                     results[current_file_name].append(line)
                 else:
                     pass

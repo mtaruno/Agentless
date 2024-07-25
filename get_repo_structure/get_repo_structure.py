@@ -191,3 +191,9 @@ def create_structure(directory_path):
                 curr_struct[file_name] = {}
 
     return structure
+
+if __name__ == "__main__":
+    import yaml
+    struct = create_structure("/Users/matthewtaruno/Library/Mobile Documents/com~apple~CloudDocs/Dev/Agentless/agentless")
+    with open("struct.yaml","w") as f:
+        yaml.dump(struct, f, default_flow_style=False)
